@@ -288,6 +288,47 @@
   width: 100%;
 }
 
+.translation-progress .progress-bar {
+  width: 100%;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+  height: 10px;
+  position: relative;
+}
+
+.translation-progress .progress-bar .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #059669);
+  width: 0;
+  transition: width 0.4s ease;
+}
+
+.translation-progress .progress-bar.indeterminate .progress-fill {
+  position: absolute;
+  width: 30%;
+  min-width: 60px;
+  animation: translation-indeterminate 1.2s infinite;
+}
+
+.translation-progress .progress-text {
+  margin-left: 12px;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+@keyframes translation-indeterminate {
+  0% {
+    left: -30%;
+  }
+  50% {
+    left: 50%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
 .job-error {
   color: #e74c3c;
   font-size: 0.9rem;

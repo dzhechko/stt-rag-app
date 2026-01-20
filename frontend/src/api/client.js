@@ -9,7 +9,7 @@ const client = axios.create({
   },
 })
 
-export const uploadFile = async (file, language = null) => {
+export const uploadFile = async (file, language = null, onUploadProgress) => {
   const formData = new FormData()
   formData.append('file', file)
   if (language) {
@@ -20,6 +20,8 @@ export const uploadFile = async (file, language = null) => {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
+    // Прогресс загрузки файла (используется на UploadPage)
+    onUploadProgress,
   })
   return response.data
 }

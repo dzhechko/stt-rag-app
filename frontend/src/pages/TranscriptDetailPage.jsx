@@ -479,15 +479,45 @@ function TranscriptDetailPage() {
           {(translationJob || translating) && (translationJob?.status === 'processing' || translationJob?.status === 'queued' || (!translationJob && translating)) && (
             <div className="translation-progress">
               <div className="progress-container">
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${(translationJob?.progress || 0) * 100}%` }}
-                  />
-                </div>
-                <span className="progress-text">
-                  Перевод в процессе... {Math.round((translationJob?.progress || 0) * 100)}%
-                </span>
+                {(() => {
+                  const progress = translationJob?.progress ?? 0
+                  const hasDeterminateProgress = progress > 0 && progress < 1
+                  
+                  // Временный лог для отладки динамики прогресса перевода
+                  console.debug('Translation progress UI:', {
+                    progress,
+                    status: translationJob?.status,
+                    hasDeterminateProgress,
+                  })
+                  
+                  if (hasDeterminateProgress) {
+                    return (
+                      <>
+                        <div className="progress-bar">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${Math.round(progress * 100)}%` }}
+                          />
+                        </div>
+                        <span className="progress-text">
+                          Перевод в процессе... {Math.round(progress * 100)}%
+                        </span>
+                      </>
+                    )
+                  }
+                  
+                  // Индетерминатный режим, когда прогресс не меняется или неизвестен
+                  return (
+                    <>
+                      <div className="progress-bar indeterminate">
+                        <div className="progress-fill" />
+                      </div>
+                      <span className="progress-text">
+                        Перевод в процессе...
+                      </span>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}

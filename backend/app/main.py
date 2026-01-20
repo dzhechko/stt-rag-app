@@ -324,17 +324,17 @@ async def process_transcription(
             if file_size <= max_file_size:
                 # Estimate expected duration based on file size
                 if file_size_mb < 5:
-                    # Small files: ~30 seconds
-                    time_to_50 = 10  # 30% of 30s
-                    time_to_90 = 20  # 60% of 30s
+                    # Small files: ~15-20 seconds
+                    time_to_50 = 5   # быстрее вывести движение
+                    time_to_90 = 10
                 elif file_size_mb < 15:
-                    # Medium files: ~60 seconds
-                    time_to_50 = 20  # 30% of 60s
-                    time_to_90 = 40  # 60% of 60s
+                    # Medium files: ~40-60 seconds
+                    time_to_50 = 10
+                    time_to_90 = 25
                 else:
-                    # Large files (but not chunked): ~120 seconds
-                    time_to_50 = 30  # 30% of 120s
-                    time_to_90 = 60  # 60% of 120s
+                    # Large files (but not chunked): ~90-120 seconds
+                    time_to_50 = 20
+                    time_to_90 = 50
                 
                 # Update to 0.5 after time_to_50
                 if not progress_stop_event.wait(time_to_50):

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, File, X, CheckCircle, AlertCircle } from 'lucide-react'
 import { uploadFile, getTranscriptJobs } from '../api/client'
@@ -10,6 +10,7 @@ function UploadPage() {
   const [uploading, setUploading] = useState(false)
   const [fileProgress, setFileProgress] = useState({}) // { transcriptId: progress }
   const navigate = useNavigate()
+  const intervalsRef = useRef({})
 
   const handleDrop = useCallback((e) => {
     e.preventDefault()
@@ -33,7 +34,8 @@ function UploadPage() {
       id: Date.now() + Math.random(),
       status: 'pending',
       transcriptId: null,
-      error: null
+      error: null,
+      uploadProgress: 0,
     }))])
   }
 
@@ -89,33 +91,34 @@ function UploadPage() {
 
   // Poll progress for files that are being transcribed
   useEffect(() => {
-    const intervals = {}
-    
     files.forEach(fileItem => {
       // Poll for files that have transcriptId and are in uploading/processing/completed status
       if (fileItem.transcriptId && (fileItem.status === 'uploading' || fileItem.status === 'processing' || fileItem.status === 'completed')) {
-        // First poll immediately (for fast transcriptions)
-        pollTranscriptionProgress(fileItem.transcriptId).then(shouldStop => {
-          if (shouldStop) {
-            // If already completed/failed, don't start interval
-            return
-          }
-          
-          // Then start polling for this file
-          const interval = setInterval(async () => {
-            const stop = await pollTranscriptionProgress(fileItem.transcriptId)
-            if (stop) {
-              clearInterval(interval)
-              delete intervals[fileItem.transcriptId]
+        // Не создавать дублирующие интервалы для одного transcriptId
+        if (!intervalsRef.current[fileItem.transcriptId]) {
+          // First poll immediately (for fast transcriptions)
+          pollTranscriptionProgress(fileItem.transcriptId).then(shouldStop => {
+            if (shouldStop) {
+              return
             }
-          }, 1000) // Poll every 1 second for better responsiveness
-          intervals[fileItem.transcriptId] = interval
-        })
+            
+            // Then start polling for this file
+            const interval = setInterval(async () => {
+              const stop = await pollTranscriptionProgress(fileItem.transcriptId)
+              if (stop) {
+                clearInterval(interval)
+                delete intervalsRef.current[fileItem.transcriptId]
+              }
+            }, 1000) // Poll every 1 second for better responsiveness
+            intervalsRef.current[fileItem.transcriptId] = interval
+          })
+        }
       }
     })
 
     return () => {
-      Object.values(intervals).forEach(interval => clearInterval(interval))
+      Object.values(intervalsRef.current).forEach(interval => clearInterval(interval))
+      intervalsRef.current = {}
     }
   }, [files])
 
@@ -133,14 +136,26 @@ function UploadPage() {
             idx === i ? { ...f, status: 'uploading' } : f
           ))
           
-          const result = await uploadFile(fileItem.file, language || null)
+          const result = await uploadFile(
+            fileItem.file,
+            language || null,
+            (progressEvent) => {
+              const total = progressEvent.total || progressEvent.loaded
+              const progress = total ? progressEvent.loaded / total : 0
+              setFiles(prev =>
+                prev.map((f, idx) =>
+                  idx === i ? { ...f, uploadProgress: progress } : f
+                )
+              )
+            }
+          )
           
           // Update status to processing and set transcriptId
           setFiles(prev => prev.map((f, idx) => 
             idx === i ? { ...f, status: 'processing', transcriptId: result.id } : f
           ))
           
-          // Initialize progress immediately
+          // Initialize transcription progress immediately
           setFileProgress(prev => ({ ...prev, [result.id]: 0.0 }))
           
           // Start polling immediately for this file (don't wait)
@@ -240,17 +255,37 @@ function UploadPage() {
                 {fileItem.status === 'uploading' && !fileItem.transcriptId && (
                   <span className="status uploading">Загрузка...</span>
                 )}
-                {fileItem.transcriptId && (fileItem.status === 'uploading' || fileItem.status === 'processing' || (fileItem.status === 'completed' && fileProgress[fileItem.transcriptId] !== undefined && fileProgress[fileItem.transcriptId] < 1.0)) && (
+                {(fileItem.status === 'uploading' || fileItem.status === 'processing') && (
                   <div className="transcription-status">
                     <div className="progress-container">
                       <div className="progress-bar">
-                        <div 
-                          className="progress-fill"
-                          style={{ width: `${(fileProgress[fileItem.transcriptId] || 0) * 100}%` }}
-                        />
+                        {(() => {
+                          const uploadProgress = fileItem.uploadProgress ?? 0
+                          const transcriptionProgress = fileItem.transcriptId
+                            ? (fileProgress[fileItem.transcriptId] || 0)
+                            : 0
+                          const combined = fileItem.transcriptId
+                            ? 0.4 * uploadProgress + 0.6 * transcriptionProgress
+                            : uploadProgress
+                          return (
+                            <div
+                              className="progress-fill"
+                              style={{ width: `${Math.round(combined * 100)}%` }}
+                            />
+                          )
+                        })()}
                       </div>
                       <span className="progress-text">
-                        Транскрибация... {Math.round((fileProgress[fileItem.transcriptId] || 0) * 100)}%
+                        {fileItem.transcriptId
+                          ? `Транскрибация... ${Math.round(
+                              (
+                                0.4 * (fileItem.uploadProgress ?? 0) +
+                                0.6 * (fileProgress[fileItem.transcriptId] || 0)
+                              ) * 100
+                            )}%`
+                          : `Загрузка файла... ${Math.round(
+                              (fileItem.uploadProgress ?? 0) * 100
+                            )}%`}
                       </span>
                     </div>
                   </div>
