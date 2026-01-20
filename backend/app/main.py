@@ -949,6 +949,22 @@ async def get_session_messages(
     return [RAGMessageResponse.from_orm(m) for m in messages]
 
 
+@app.delete("/api/rag/sessions/{session_id}", status_code=204)
+async def delete_rag_session(
+    session_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Delete a RAG session and all its messages"""
+    session = db.query(RAGSession).filter(RAGSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Cascade delete will handle messages automatically due to relationship
+    db.delete(session)
+    db.commit()
+    return None
+
+
 @app.post("/api/transcripts/{transcript_id}/reindex")
 async def reindex_transcript(
     transcript_id: UUID,

@@ -165,26 +165,28 @@ function RAGChatPage() {
     use_advanced_grading: false,
     reranker_model: 'ms-marco-MiniLM-L-6-v2'
   })
+  const [sessionError, setSessionError] = useState(null)
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
     loadTranscripts()
     loadSessions()
+  }, [])
+
+  // Загрузка сообщений сессии при изменении URL
+  useEffect(() => {
     if (urlSessionId) {
       setCurrentSessionId(urlSessionId)
       setUseSession(true)
       loadSessionMessages(urlSessionId)
+    } else {
+      // Если нет sessionId в URL, очищаем состояние
+      setCurrentSessionId(null)
+      setUseSession(false)
+      setMessages([])
+      setSessionError(null)
     }
   }, [urlSessionId])
-  
-  useEffect(() => {
-    if (currentSessionId && useSession) {
-      loadSessionMessages(currentSessionId)
-    } else if (!useSession) {
-      setMessages([])
-      setCurrentSessionId(null)
-    }
-  }, [currentSessionId, useSession])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -223,6 +225,7 @@ function RAGChatPage() {
 
   const loadSessionMessages = async (sid) => {
     if (!sid) return
+    setSessionError(null)
     try {
       const response = await client.get(`/rag/sessions/${sid}/messages`)
       const loadedMessages = []
@@ -239,8 +242,12 @@ function RAGChatPage() {
         })
       })
       setMessages(loadedMessages)
+      setSessionError(null)
     } catch (error) {
       console.error('Error loading session messages:', error)
+      const errorMessage = error.response?.data?.detail || error.message || 'Не удалось загрузить сообщения сессии'
+      setSessionError(errorMessage)
+      setMessages([])
     }
   }
 
@@ -263,26 +270,28 @@ function RAGChatPage() {
   }
 
   const handleSelectSession = (sid) => {
-    setCurrentSessionId(sid)
-    setUseSession(true)
     setShowSessionSelector(false)
     navigate(`/rag/chat/${sid}`)
+    // Состояние обновится автоматически через useEffect при изменении urlSessionId
   }
 
   const handleDeleteSession = async (sid, e) => {
     e.stopPropagation()
-    if (window.confirm('Delete this session?')) {
+    if (window.confirm('Вы уверены, что хотите удалить эту сессию? Все сообщения в ней будут удалены.')) {
       try {
         await deleteRAGSession(sid)
         if (currentSessionId === sid) {
           setCurrentSessionId(null)
           setUseSession(false)
           setMessages([])
+          setSessionError(null)
           navigate('/rag/chat')
         }
         await loadSessions()
       } catch (error) {
         console.error('Error deleting session:', error)
+        const errorMessage = error.response?.data?.detail || error.message || 'Не удалось удалить сессию'
+        alert(`Ошибка при удалении сессии: ${errorMessage}`)
       }
     }
   }
@@ -526,10 +535,29 @@ function RAGChatPage() {
 
         <div className="chat-main">
           <div className="messages-container">
-            {messages.length === 0 ? (
+            {sessionError ? (
+              <div className="empty-chat error">
+                <MessageSquare size={48} />
+                <p style={{ color: '#e74c3c' }}>Ошибка загрузки сессии: {sessionError}</p>
+                <button 
+                  onClick={() => loadSessionMessages(currentSessionId)}
+                  style={{ 
+                    marginTop: '1rem', 
+                    padding: '0.5rem 1rem', 
+                    background: '#10b981', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '4px', 
+                    cursor: 'pointer' 
+                  }}
+                >
+                  Попробовать снова
+                </button>
+              </div>
+            ) : messages.length === 0 ? (
               <div className="empty-chat">
                 <MessageSquare size={48} />
-                <p>Задайте вопрос о ваших транскриптах</p>
+                <p>{currentSessionId ? 'Эта сессия пока пуста. Задайте первый вопрос!' : 'Задайте вопрос о ваших транскриптах'}</p>
               </div>
             ) : (
               messages.map((msg, idx) => (
