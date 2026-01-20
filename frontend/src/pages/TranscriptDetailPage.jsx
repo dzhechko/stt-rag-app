@@ -21,7 +21,8 @@ function TranscriptDetailPage() {
   const [reindexing, setReindexing] = useState(false)
   const [viewLanguage, setViewLanguage] = useState('current') // 'current', 'original', 'ru'
   const [translating, setTranslating] = useState(false)
-  const [expandedSummaries, setExpandedSummaries] = useState(new Set())
+  const [visibleSummaries, setVisibleSummaries] = useState(new Set()) // ID видимых summaries
+  const [expandedSummaries, setExpandedSummaries] = useState(new Set()) // ID развернутых summaries (preview/full)
 
   useEffect(() => {
     loadTranscript()
@@ -30,14 +31,13 @@ function TranscriptDetailPage() {
       loadSummaries()
       loadIndexStatus()
     }
+    // Опрос нужен только для pending/processing статусов
     const interval = setInterval(() => {
       if (transcript?.status === 'processing' || transcript?.status === 'pending') {
         loadTranscript()
         loadJobs()
-      } else if (transcript?.status === 'completed') {
-        loadSummaries()
-        loadIndexStatus()
       }
+      // Убрали опрос summaries и indexStatus при completed - они загружаются только один раз
     }, 2000)
     return () => clearInterval(interval)
   }, [id, transcript?.status])
@@ -68,6 +68,10 @@ function TranscriptDetailPage() {
     try {
       const data = await getSummaries(id)
       setSummaries(data)
+      // По умолчанию все summaries видимы
+      if (data && data.length > 0) {
+        setVisibleSummaries(new Set(data.map(s => s.id)))
+      }
     } catch (error) {
       console.error('Error loading summaries:', error)
     } finally {
@@ -404,6 +408,7 @@ function TranscriptDetailPage() {
           ) : summaries.length > 0 ? (
             <div className="summaries-list">
               {summaries.map((summary) => {
+                const isVisible = visibleSummaries.has(summary.id)
                 const isExpanded = expandedSummaries.has(summary.id)
                 const previewLength = 200
                 const shouldShowToggle = summary.summary_text && summary.summary_text.length > previewLength
@@ -411,6 +416,34 @@ function TranscriptDetailPage() {
                   ? summary.summary_text 
                   : summary.summary_text.substring(0, previewLength) + '...'
                 
+                // Если summary скрыт, показываем только кнопку для показа
+                if (!isVisible) {
+                  return (
+                    <div key={summary.id} className="summary-item summary-hidden">
+                      <div className="summary-header">
+                        <span className="summary-model">{summary.model_used}</span>
+                        <span className="summary-date">
+                          {formatDate(summary.created_at)}
+                        </span>
+                      </div>
+                      <button
+                        className="summary-toggle"
+                        onClick={() => {
+                          setVisibleSummaries(prev => {
+                            const newSet = new Set(prev)
+                            newSet.add(summary.id)
+                            return newSet
+                          })
+                        }}
+                      >
+                        <ChevronDown size={16} />
+                        <span>Show summary</span>
+                      </button>
+                    </div>
+                  )
+                }
+                
+                // Если summary видим, показываем полный контент
                 return (
                   <div key={summary.id} className="summary-item">
                     <div className="summary-header">
@@ -418,6 +451,20 @@ function TranscriptDetailPage() {
                       <span className="summary-date">
                         {formatDate(summary.created_at)}
                       </span>
+                      <button
+                        className="summary-toggle summary-hide-btn"
+                        onClick={() => {
+                          setVisibleSummaries(prev => {
+                            const newSet = new Set(prev)
+                            newSet.delete(summary.id)
+                            return newSet
+                          })
+                        }}
+                        title="Hide summary"
+                      >
+                        <ChevronUp size={16} />
+                        <span>Hide</span>
+                      </button>
                     </div>
                     {summary.summary_template && (
                       <span className="summary-template">
@@ -539,6 +586,7 @@ function TranscriptDetailPage() {
             {activeTab === 'summary' && summaries.length > 0 && (
               <div className="summary-content">
                 {summaries.map((summary) => {
+                  const isVisible = visibleSummaries.has(summary.id)
                   const isExpanded = expandedSummaries.has(summary.id)
                   const previewLength = 200
                   const shouldShowToggle = summary.summary_text && summary.summary_text.length > previewLength
@@ -546,6 +594,34 @@ function TranscriptDetailPage() {
                     ? summary.summary_text 
                     : summary.summary_text.substring(0, previewLength) + '...'
                   
+                  // Если summary скрыт, показываем только кнопку для показа
+                  if (!isVisible) {
+                    return (
+                      <div key={summary.id} className="summary-display-item summary-hidden">
+                        <div className="summary-meta">
+                          <span className="summary-model">{summary.model_used}</span>
+                          <span className="summary-date">
+                            {formatDate(summary.created_at)}
+                          </span>
+                        </div>
+                        <button
+                          className="summary-toggle"
+                          onClick={() => {
+                            setVisibleSummaries(prev => {
+                              const newSet = new Set(prev)
+                              newSet.add(summary.id)
+                              return newSet
+                            })
+                          }}
+                        >
+                          <ChevronDown size={16} />
+                          <span>Show summary</span>
+                        </button>
+                      </div>
+                    )
+                  }
+                  
+                  // Если summary видим, показываем полный контент
                   return (
                     <div key={summary.id} className="summary-display-item">
                       <div className="summary-meta">
@@ -558,6 +634,20 @@ function TranscriptDetailPage() {
                         <span className="summary-date">
                           {formatDate(summary.created_at)}
                         </span>
+                        <button
+                          className="summary-toggle summary-hide-btn"
+                          onClick={() => {
+                            setVisibleSummaries(prev => {
+                              const newSet = new Set(prev)
+                              newSet.delete(summary.id)
+                              return newSet
+                            })
+                          }}
+                          title="Hide summary"
+                        >
+                          <ChevronUp size={16} />
+                          <span>Hide</span>
+                        </button>
                         {shouldShowToggle && (
                           <button
                             className="summary-toggle"

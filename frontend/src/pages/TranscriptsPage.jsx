@@ -212,9 +212,6 @@ function TranscriptsPage() {
                       </div>
                     </div>
                   )}
-                  {!expandedTranscripts.has(transcript.id) && (
-                    <p className="transcript-preview">{transcript.transcription_text.substring(0, 150)}...</p>
-                  )}
                 </div>
               )}
 

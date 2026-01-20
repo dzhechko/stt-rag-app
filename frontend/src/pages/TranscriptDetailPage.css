@@ -623,3 +623,35 @@
   margin-bottom: 1rem;
   flex-wrap: wrap;
 }
+
+/* Скрытые summaries */
+.summary-hidden {
+  background: #f8f9fa;
+  border-left: 3px solid #95a5a6;
+  padding: 0.75rem 1rem;
+  min-height: auto;
+}
+
+.summary-hidden .summary-header {
+  margin-bottom: 0.5rem;
+}
+
+.summary-hidden .summary-toggle {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+/* Кнопка скрытия summary */
+.summary-hide-btn {
+  margin-left: auto;
+  background: #fee;
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+.summary-hide-btn:hover {
+  background: #fdd;
+  border-color: #c0392b;
+  color: #c0392b;
+}
