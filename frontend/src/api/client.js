@@ -99,10 +99,14 @@ export const reindexTranscript = async (transcriptId) => {
   return response.data
 }
 
-export const translateTranscript = async (transcriptId, targetLanguage = 'ru') => {
-  const response = await client.post(`/transcripts/${transcriptId}/translate`, {
+export const translateTranscript = async (transcriptId, targetLanguage = 'ru', model = null) => {
+  const body = {
     target_language: targetLanguage
-  })
+  }
+  if (model) {
+    body.model = model
+  }
+  const response = await client.post(`/transcripts/${transcriptId}/translate`, body)
   return response.data
 }
 

@@ -1044,6 +1044,7 @@ async def reindex_transcript(
 async def translate_transcript(
     transcript_id: UUID,
     target_language: str = "ru",
+    model: Optional[str] = None,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
@@ -1095,7 +1096,8 @@ async def translate_transcript(
         transcript_id,
         target_language,
         source_language,
-        job.id
+        job.id,
+        model
     )
     
     logger.info(f"Translation job queued for transcript {transcript_id} from {source_language} to {target_language}")
@@ -1112,7 +1114,8 @@ async def process_translation(
     transcript_id: UUID,
     target_language: str,
     source_language: str,
-    job_id: UUID
+    job_id: UUID,
+    model: Optional[str] = None
 ):
     """Background task to process translation"""
     from app.database import SessionLocal
@@ -1162,6 +1165,7 @@ async def process_translation(
             text=text_to_translate,
             source_language=source_language,
             target_language=target_language,
+            model=model,
             progress_callback=update_translation_progress
         )
         

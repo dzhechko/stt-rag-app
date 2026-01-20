@@ -47,6 +47,7 @@ function TranscriptDetailPage() {
   const [reindexing, setReindexing] = useState(false)
   const [viewLanguage, setViewLanguage] = useState('current') // 'current', 'original', 'ru'
   const [translating, setTranslating] = useState(false)
+  const [translationModel, setTranslationModel] = useState('GigaChat/GigaChat-2-Max') // Модель для перевода
   const [visibleSummaries, setVisibleSummaries] = useState(new Set()) // ID видимых summaries
   const [expandedSummaries, setExpandedSummaries] = useState(new Set()) // ID развернутых summaries (preview/full)
 
@@ -190,7 +191,7 @@ function TranscriptDetailPage() {
     setTranslating(true)
     try {
       // Start translation (this will create a job on backend and return immediately)
-      const result = await translateTranscript(id, targetLanguage)
+      const result = await translateTranscript(id, targetLanguage, translationModel)
       
       if (result.already_translated) {
         alert(result.message)
@@ -535,6 +536,19 @@ function TranscriptDetailPage() {
                   ? "Этот транскрипт на английском языке. Хотите перевести его на русский?"
                   : "Хотите перевести этот транскрипт на русский?"}
               </p>
+              <div className="translation-model-selector">
+                <label htmlFor="translation-model">Модель для перевода:</label>
+                <select
+                  id="translation-model"
+                  value={translationModel}
+                  onChange={(e) => setTranslationModel(e.target.value)}
+                  className="model-select"
+                >
+                  <option value="GigaChat/GigaChat-2-Max">GigaChat-2-Max — Медленный, высокое качество</option>
+                  <option value="GigaChat/GigaChat-2">GigaChat-2 — Быстрее, хорошее качество</option>
+                  <option value="Qwen/Qwen3-235B-A22B-Instruct-2507">Qwen3 — Быстрый, рекомендуется для больших текстов</option>
+                </select>
+              </div>
               <button
                 className="btn-translate"
                 onClick={() => handleTranslate('ru')}

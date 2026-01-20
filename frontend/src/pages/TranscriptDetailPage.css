@@ -650,6 +650,40 @@
   font-style: italic;
 }
 
+.translation-model-selector {
+  margin-bottom: 1rem;
+}
+
+.translation-model-selector label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.model-select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  font-size: 0.9rem;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-select:hover {
+  border-color: #10b981;
+}
+
+.model-select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
 .btn-translate {
   display: flex;
   align-items: center;
