@@ -110,7 +110,7 @@ function UploadPage() {
             <option value="es">Spanish</option>
           </select>
           <small className="language-hint">
-            Для русских встреч рекомендуется выбрать "Russian" для более точной транскрипции
+            Для русских встреч рекомендуется выбрать "Russian" для более точной транскрибации
           </small>
         </div>
 

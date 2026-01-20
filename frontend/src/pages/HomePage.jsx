@@ -11,11 +11,11 @@ function HomePage() {
           <span>АНАЛИЗ СИСТЕМЫ ЗАВЕРШЕН</span>
         </div>
         <h1 className="hero-title">
-          <span className="hero-title-main">STT</span> APP: ТРАНСКРИПЦИЯ И RAG
+          <span className="hero-title-main">STT</span> APP: ТРАНСКРИБАЦИЯ И RAG
         </h1>
         <p className="hero-description">
-          Полнофункциональная платформа для транскрипции аудио и работы с Retrieval-Augmented Generation. 
-          Исследуйте возможности транскрипции, управления документами и интеллектуального поиска в интерактивной среде.
+          Полнофункциональная платформа для транскрибации аудио и работы с Retrieval-Augmented Generation. 
+          Исследуйте возможности транскрибации, управления документами и интеллектуального поиска в интерактивной среде.
         </p>
         <div className="hero-buttons">
           <Link to="/transcripts" className="btn-hero btn-hero-primary">
@@ -36,10 +36,10 @@ function HomePage() {
             <div className="feature-icon">
               <FileText size={32} />
             </div>
-            <h3 className="feature-title">ТРАНСКРИПЦИЯ АУДИО</h3>
+            <h3 className="feature-title">ТРАНСКРИБАЦИЯ АУДИО</h3>
             <p className="feature-subtitle">Высокоточное преобразование речи в текст</p>
             <p className="feature-description">
-              Загружайте аудиофайлы различных форматов и получайте точные транскрипции с поддержкой 
+              Загружайте аудиофайлы различных форматов и получайте точные транскрибации с поддержкой 
               множества языков и автоматической обработкой.
             </p>
           </div>
@@ -51,7 +51,7 @@ function HomePage() {
             <h3 className="feature-title">RAG ЧАТ</h3>
             <p className="feature-subtitle">Интеллектуальный поиск по документам</p>
             <p className="feature-description">
-              Задавайте вопросы на основе транскрипций с использованием Retrieval-Augmented Generation. 
+              Задавайте вопросы на основе транскрибаций с использованием Retrieval-Augmented Generation. 
               Получайте точные ответы с указанием источников.
             </p>
           </div>
@@ -60,10 +60,10 @@ function HomePage() {
             <div className="feature-icon">
               <Database size={32} />
             </div>
-            <h3 className="feature-title">УПРАВЛЕНИЕ ДАННЫМИ</h3>
+            <h3 className="feature-title">ПОДГОТОВКА ПРОТОКОЛОВ ВСТРЕЧ</h3>
             <p className="feature-subtitle">Централизованное хранение и обработка</p>
             <p className="feature-description">
-              Управляйте транскрипциями, создавайте суммаризации, индексируйте документы для поиска 
+              Управляйте транскрибациями, создавайте суммаризации, индексируйте документы для поиска 
               и отслеживайте историю обработки.
             </p>
           </div>

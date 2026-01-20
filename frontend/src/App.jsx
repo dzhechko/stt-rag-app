@@ -21,7 +21,7 @@ function App() {
             <div className="nav-links">
               <Link to="/" className="nav-link">Главная</Link>
               <Link to="/upload" className="nav-link">Загрузка</Link>
-              <Link to="/transcripts" className="nav-link">Транскрипты</Link>
+              <Link to="/transcripts" className="nav-link">Транскрибаты</Link>
               <Link to="/rag" className="nav-link">RAG Чат</Link>
             </div>
           </div>
