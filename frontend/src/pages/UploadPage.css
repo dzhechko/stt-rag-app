@@ -5,7 +5,7 @@
 
 .upload-page h1 {
   margin-bottom: 2rem;
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .upload-section {
@@ -26,12 +26,12 @@
 }
 
 .drop-zone:hover {
-  border-color: #3498db;
-  background-color: #f8f9fa;
+  border-color: #10b981;
+  background-color: #f0fdf4;
 }
 
 .drop-zone svg {
-  color: #95a5a6;
+  color: #10b981;
   margin-bottom: 1rem;
 }
 
@@ -60,7 +60,7 @@
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .language-selector select {
@@ -88,7 +88,7 @@
 
 .files-list h3 {
   margin-bottom: 1rem;
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .file-item {
@@ -135,11 +135,11 @@
 }
 
 .status.uploading {
-  color: #3498db;
+  color: #10b981;
 }
 
 .status.completed {
-  color: #27ae60;
+  color: #10b981;
 }
 
 .status.error {
@@ -150,18 +150,20 @@
   margin-top: 2rem;
   width: 100%;
   padding: 1rem;
-  background: #3498db;
+  background: #10b981;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 1.1rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
 }
 
 .btn-upload:hover:not(:disabled) {
-  background: #2980b9;
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .btn-upload:disabled {

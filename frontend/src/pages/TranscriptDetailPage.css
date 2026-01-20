@@ -22,12 +22,13 @@
 }
 
 .btn-back:hover {
-  background: #f8f9fa;
-  border-color: #3498db;
+  background: #f0fdf4;
+  border-color: #10b981;
+  color: #10b981;
 }
 
 .detail-header h1 {
-  color: #2c3e50;
+  color: #1f2937;
   margin: 0;
 }
 
@@ -49,7 +50,7 @@
 }
 
 .info-card svg {
-  color: #3498db;
+  color: #10b981;
 }
 
 .info-card label {
@@ -62,7 +63,7 @@
 .info-card span {
   display: block;
   font-weight: 500;
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .status-pending {
@@ -70,7 +71,7 @@
 }
 
 .status-processing {
-  color: #3498db;
+  color: #10b981;
 }
 
 .status-completed {
@@ -98,7 +99,7 @@
 
 .rag-index-header h3 {
   margin: 0;
-  color: #2c3e50;
+  color: #1f2937;
   font-size: 1.2rem;
 }
 
@@ -182,7 +183,7 @@
 
 .jobs-section h2 {
   margin-bottom: 1rem;
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .job-item {
@@ -276,7 +277,7 @@
 }
 
 .content-tabs button:hover {
-  color: #2c3e50;
+  color: #1f2937;
   background: #f8f9fa;
 }
 
@@ -324,7 +325,7 @@
   font-family: 'Courier New', monospace;
   font-size: 0.9rem;
   line-height: 1.6;
-  color: #2c3e50;
+  color: #1f2937;
   margin: 0;
 }
 
@@ -373,7 +374,7 @@
   align-items: center;
   gap: 0.5rem;
   margin: 0;
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .btn-create-summary {
@@ -381,7 +382,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: #3b82f6;
+  background: #10b981;
   color: white;
   border: none;
   border-radius: 4px;
@@ -392,7 +393,7 @@
 }
 
 .btn-create-summary:hover {
-  background: #2563eb;
+  background: #059669;
 }
 
 .summaries-list {
@@ -405,7 +406,7 @@
   background: #f8f9fa;
   padding: 1rem;
   border-radius: 6px;
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid #10b981;
 }
 
 .summary-header {
@@ -496,7 +497,7 @@
 
 .translation-header h3 {
   margin: 0;
-  color: #2c3e50;
+  color: #1f2937;
   font-size: 1.2rem;
   display: flex;
   align-items: center;
@@ -523,7 +524,7 @@
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .language-buttons {
@@ -537,7 +538,7 @@
   border: 1px solid #ddd;
   border-radius: 4px;
   background: white;
-  color: #2c3e50;
+  color: #1f2937;
   cursor: pointer;
   font-size: 0.9rem;
   transition: all 0.2s;
@@ -601,7 +602,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  color: #2c3e50;
+  color: #1f2937;
   transition: all 0.2s;
   margin-left: auto;
 }
@@ -675,7 +676,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  color: #2c3e50;
+  color: #1f2937;
   transition: all 0.2s;
 }
 

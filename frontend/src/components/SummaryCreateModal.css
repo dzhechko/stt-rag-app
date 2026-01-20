@@ -144,12 +144,12 @@
 }
 
 .form-actions button[type="submit"] {
-  background: #3b82f6;
+  background: #10b981;
   color: white;
 }
 
 .form-actions button[type="submit"]:hover:not(:disabled) {
-  background: #2563eb;
+  background: #059669;
 }
 
 .form-actions button:disabled {

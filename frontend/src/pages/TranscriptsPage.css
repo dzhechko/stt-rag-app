@@ -10,7 +10,7 @@
 }
 
 .page-header h1 {
-  color: #2c3e50;
+  color: #1f2937;
 }
 
 .filters {
@@ -52,16 +52,18 @@
 .btn-primary {
   display: inline-block;
   padding: 0.75rem 1.5rem;
-  background: #3498db;
+  background: #10b981;
   color: white;
   text-decoration: none;
-  border-radius: 4px;
-  font-weight: 500;
-  transition: background 0.2s;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.2s;
 }
 
 .btn-primary:hover {
-  background: #2980b9;
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .transcripts-grid {
@@ -88,7 +90,7 @@
 
 .card-header h3 {
   font-size: 1.1rem;
-  color: #2c3e50;
+  color: #1f2937;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -156,8 +158,9 @@
 }
 
 .btn-action:hover {
-  background: #f8f9fa;
-  border-color: #3498db;
+  background: #f0fdf4;
+  border-color: #10b981;
+  color: #10b981;
 }
 
 .btn-action.btn-danger {
@@ -187,9 +190,9 @@
 }
 
 .transcript-toggle:hover {
-  background: #e9ecef;
-  border-color: #667eea;
-  color: #667eea;
+  background: #f0fdf4;
+  border-color: #10b981;
+  color: #10b981;
 }
 
 .transcript-expanded {
@@ -224,8 +227,8 @@
 }
 
 .transcript-view-tabs button.active {
-  color: #667eea;
-  border-bottom-color: #667eea;
+  color: #10b981;
+  border-bottom-color: #10b981;
   background: white;
 }
 

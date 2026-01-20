@@ -3,7 +3,7 @@
   height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   padding: 1.5rem;
   gap: 1.5rem;
 }
@@ -24,7 +24,7 @@
   margin: 0;
   font-size: 1.75rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -77,14 +77,14 @@
 
 .transcript-checkbox:hover {
   background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-  border-color: #667eea;
+  border-color: #10b981;
   transform: translateX(4px);
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
 }
 
 .transcript-checkbox:has(input:checked) {
   background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  border-color: #3498db;
+  border-color: #10b981;
   box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
 }
 
@@ -207,7 +207,7 @@
 }
 
 .message.question .message-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border-bottom-right-radius: 4px;
 }
@@ -311,7 +311,7 @@
 }
 
 .markdown-content a {
-  color: #667eea;
+  color: #10b981;
   text-decoration: none;
 }
 
@@ -394,7 +394,7 @@
   gap: 0.5rem;
   background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
   border: 2px solid #3498db;
-  color: #2980b9;
+  color: #059669;
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 600;
@@ -429,7 +429,7 @@
 }
 
 .chunk-item:hover {
-  border-color: #667eea;
+  border-color: #10b981;
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.15);
   transform: translateY(-2px);
 }
@@ -490,14 +490,14 @@
 
 .input-container input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #10b981;
   background: white;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .input-container button {
   padding: 1rem 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border: none;
   border-radius: 12px;
@@ -547,7 +547,7 @@
 
 .session-toggle:has(input:checked) {
   background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  border-color: #3498db;
+  border-color: #10b981;
 }
 
 .session-toggle input {
@@ -557,7 +557,7 @@
 .btn-session-select,
 .btn-clear-history {
   padding: 0.625rem 1.25rem;
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -598,8 +598,8 @@
 }
 
 .btn-back:hover {
-  border-color: #667eea;
-  color: #667eea;
+  border-color: #10b981;
+  color: #10b981;
   transform: translateX(-2px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.15);
 }
@@ -653,9 +653,9 @@
 }
 
 .feedback-btn.active {
-  background: #3498db;
+  background: #10b981;
   color: white;
-  border-color: #3498db;
+  border-color: #10b981;
 }
 
 .feedback-btn.active.positive {
@@ -824,7 +824,7 @@
 
 .settings-footer button {
   padding: 0.5rem 1.5rem;
-  background: #3498db;
+  background: #10b981;
   color: white;
   border: none;
   border-radius: 4px;
@@ -833,7 +833,7 @@
 }
 
 .settings-footer button:hover {
-  background: #2980b9;
+  background: #059669;
 }
 
 .btn-clear-history {
@@ -913,7 +913,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: #3498db;
+  background: #10b981;
   color: white;
   border: none;
   border-radius: 4px;
@@ -921,7 +921,7 @@
 }
 
 .session-create button:hover {
-  background: #2980b9;
+  background: #059669;
 }
 
 .sessions-list {
@@ -1004,8 +1004,8 @@
 
 .copy-button:hover {
   background: #e9ecef;
-  border-color: #667eea;
-  color: #667eea;
+  border-color: #10b981;
+  color: #10b981;
 }
 
 .copy-button:active {
