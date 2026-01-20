@@ -94,6 +94,19 @@ function UploadPage() {
             className="file-input"
           />
         </div>
+        
+        <div className="supported-formats">
+          <p className="formats-label">Поддерживаемые форматы:</p>
+          <div className="formats-list">
+            <span className="format-tag">MP3</span>
+            <span className="format-tag">MP4</span>
+            <span className="format-tag">MPEG</span>
+            <span className="format-tag">MPGA</span>
+            <span className="format-tag">M4A</span>
+            <span className="format-tag">WAV</span>
+            <span className="format-tag">WEBM</span>
+          </div>
+        </div>
 
         <div className="language-selector">
           <label htmlFor="language">Language:</label>
