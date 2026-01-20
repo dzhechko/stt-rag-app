@@ -186,11 +186,20 @@ function TranscriptDetailPage() {
         // Check translation job status - look for ANY translation job, not just active ones
         const translationJob = jobsData?.find(j => j.job_type === 'translation')
         if (translationJob) {
+          console.log('[Polling] Translation job status:', translationJob.status, 'progress:', translationJob.progress)
           if (translationJob.status === 'completed') {
             // Translation completed - reload transcript and stop translating state
-            await loadTranscript()
+            console.log('[Polling] Translation completed! Reloading transcript...')
             setTranslating(false)
             setTranslationStartTime(null) // Reset start time
+            
+            // Reload transcript immediately and again after a delay to ensure data is fresh
+            await loadTranscript()
+            console.log('[Polling] First reload done, scheduling second reload...')
+            setTimeout(async () => {
+              await loadTranscript()
+              console.log('[Polling] Second reload done - checking extra_metadata:', transcript?.extra_metadata)
+            }, 500)
           } else if (translationJob.status === 'failed') {
             // Translation failed - show error and stop translating state
             setTranslating(false)
@@ -340,17 +349,23 @@ function TranscriptDetailPage() {
   }
 
   const getDisplayJSON = () => {
-    if (!transcript?.transcription_json) return null
+    if (!transcript?.transcription_json) {
+      console.log('[getDisplayJSON] No transcription_json available')
+      return null
+    }
     
     const isTranslated = transcript.extra_metadata?.translated === true
     const translatedJSON = transcript.extra_metadata?.translated_transcription_json
     
-    // Debug logging to help verify which JSON is used (can be removed later)
-    console.debug('getDisplayJSON:', {
+    // Debug logging to help verify which JSON is used
+    console.log('[getDisplayJSON] Debug info:', {
       isTranslated,
       hasTranslatedJSON: Boolean(translatedJSON),
+      translatedJSONType: translatedJSON ? typeof translatedJSON : 'none',
+      translatedJSONKeys: translatedJSON ? Object.keys(translatedJSON).slice(0, 5) : 'none',
       viewLanguage,
       transcriptLanguage: transcript.language,
+      extraMetadataKeys: transcript.extra_metadata ? Object.keys(transcript.extra_metadata) : 'none',
     })
     
     if (isTranslated && translatedJSON) {
@@ -402,8 +417,10 @@ function TranscriptDetailPage() {
     return labels[jobType] || jobType
   }
 
-  // Get active translation job - find any translation job (we'll check status in rendering)
-  const translationJob = jobs.find(j => j.job_type === 'translation')
+  // Get active translation job - find ACTIVE translation job only (processing or queued)
+  const activeTranslationJob = jobs.find(j => j.job_type === 'translation' && (j.status === 'processing' || j.status === 'queued'))
+  // Also find any translation job for showing errors
+  const anyTranslationJob = jobs.find(j => j.job_type === 'translation')
   
   // Get active indexing job
   const indexingJob = jobs.find(j => j.job_type === 'indexing' && (j.status === 'processing' || j.status === 'queued'))
@@ -590,19 +607,28 @@ function TranscriptDetailPage() {
             </div>
           </div>
 
-          {(translationJob || translating) && (translationJob?.status === 'processing' || translationJob?.status === 'queued' || (!translationJob && translating)) && (() => {
-            const progress = translationJob?.progress ?? 0
+          {(activeTranslationJob || translating) && (() => {
+            const progress = activeTranslationJob?.progress ?? 0
             const hasDeterminateProgress = progress > 0 && progress < 1
             
             // Calculate elapsed time and ETA
             let elapsedSeconds = 0
             let remainingSeconds = null
+            let initialEstimate = null
+            
             if (translationStartTime) {
               elapsedSeconds = (currentTime - translationStartTime) / 1000
               if (hasDeterminateProgress && progress >= 0.05) {
-                // Only show ETA if we have meaningful progress (>= 5%)
+                // Calculate ETA based on actual progress
                 const estimatedTotalSeconds = elapsedSeconds / progress
                 remainingSeconds = Math.max(0, estimatedTotalSeconds - elapsedSeconds)
+              } else if (transcript?.transcription_text) {
+                // Use initial estimate based on model when we don't have meaningful progress
+                const textLength = transcript.transcription_text.length
+                const estimate = estimateTranslationTime(textLength, translationModel)
+                initialEstimate = estimate
+                // Subtract elapsed time from initial estimate
+                remainingSeconds = Math.max(0, estimate.maxSeconds - elapsedSeconds)
               }
             }
             
@@ -643,6 +669,9 @@ function TranscriptDetailPage() {
                         {translationStartTime && (
                           <div className="progress-time-info">
                             <span>Прошло: {formatDuration(elapsedSeconds)}</span>
+                            {initialEstimate && remainingSeconds !== null && remainingSeconds > 0 && (
+                              <span>Осталось: ~{formatDuration(remainingSeconds)} (прогноз)</span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -652,14 +681,14 @@ function TranscriptDetailPage() {
               </div>
             )
           })()}
-          {translationJob && translationJob.status === 'failed' && (
+          {anyTranslationJob && anyTranslationJob.status === 'failed' && (
             <div className="translation-error">
               <p className="error-message">
-                Ошибка при переводе: {translationJob.error_message || 'Неизвестная ошибка'}
+                Ошибка при переводе: {anyTranslationJob.error_message || 'Неизвестная ошибка'}
               </p>
             </div>
           )}
-          {!isTranslated && transcript.language?.toLowerCase() !== 'ru' && !translationJob && !translating && (() => {
+          {!isTranslated && transcript.language?.toLowerCase() !== 'ru' && !activeTranslationJob && !translating && (() => {
             // Calculate estimated translation time
             const textLength = transcript.transcription_text?.length || 0
             const timeEstimate = estimateTranslationTime(textLength, translationModel)
