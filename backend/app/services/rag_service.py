@@ -2,7 +2,7 @@ import logging
 import os
 import uuid
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -290,7 +290,8 @@ class RAGService:
         self,
         transcript_id: str,
         text: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[Callable[[float], None]] = None
     ) -> int:
         """
         Index transcript text in Qdrant
@@ -313,13 +314,23 @@ class RAGService:
             return 0
         
         try:
+            # Update progress: splitting started
+            if progress_callback:
+                progress_callback(0.05)
+            
             # Split text into chunks
             chunks = self.text_splitter.split_text(text)
             logger.info(f"Splitting transcript {transcript_id} into {len(chunks)} chunks")
             
             if len(chunks) == 0:
                 logger.warning(f"No chunks created for transcript {transcript_id}, text may be too short")
+                if progress_callback:
+                    progress_callback(1.0)
                 return 0
+            
+            # Update progress: chunks split
+            if progress_callback:
+                progress_callback(0.15)
             
             # Generate embeddings for chunks
             chunk_embeddings = self._generate_embeddings(chunks)
@@ -327,11 +338,19 @@ class RAGService:
             # Check if embeddings were generated
             if not chunk_embeddings or len(chunk_embeddings) == 0:
                 logger.warning(f"No embeddings generated for transcript {transcript_id}")
+                if progress_callback:
+                    progress_callback(1.0)
                 return 0
             
             if len(chunk_embeddings) != len(chunks):
                 logger.warning(f"Embeddings count mismatch: {len(chunk_embeddings)} embeddings for {len(chunks)} chunks")
+                if progress_callback:
+                    progress_callback(1.0)
                 return 0
+            
+            # Update progress: embeddings generated
+            if progress_callback:
+                progress_callback(0.4)
             
             # Delete existing points for this transcript_id before reindexing
             # This prevents duplicates when reindexing
@@ -352,6 +371,10 @@ class RAGService:
             except Exception as e:
                 logger.warning(f"Could not delete existing chunks for transcript {transcript_id}: {str(e)}. Continuing with indexing...")
             
+            # Update progress: old chunks deleted
+            if progress_callback:
+                progress_callback(0.5)
+            
             # Prepare points for Qdrant
             points = []
             for i, (chunk_text, embedding) in enumerate(zip(chunks, chunk_embeddings)):
@@ -367,6 +390,15 @@ class RAGService:
                     }
                 )
                 points.append(point)
+                
+                # Update progress while preparing points (0.5 to 0.8)
+                if progress_callback and (i + 1) % max(1, len(chunks) // 10) == 0:
+                    progress = 0.5 + 0.3 * (i + 1) / len(chunks)
+                    progress_callback(progress)
+            
+            # Update progress: points prepared
+            if progress_callback:
+                progress_callback(0.8)
             
             # Upsert points to Qdrant
             try:
@@ -376,8 +408,16 @@ class RAGService:
                 )
                 logger.info(f"Indexed {len(points)} chunks for transcript {transcript_id}")
                 
+                # Update progress: points upserted
+                if progress_callback:
+                    progress_callback(0.9)
+                
                 # Update BM25 index with new chunks
                 self._update_bm25_index(chunks, transcript_id)
+                
+                # Update progress: completed
+                if progress_callback:
+                    progress_callback(1.0)
                 
                 return len(points)
             except Exception as upsert_error:

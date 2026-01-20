@@ -4,7 +4,7 @@ import logging
 import tempfile
 import shutil
 import httpx
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 from openai import OpenAI
 from app.config import settings
 
@@ -54,7 +54,8 @@ class TranscriptionService:
         self,
         file_path: str,
         language: Optional[str] = None,
-        response_format: str = "json"
+        response_format: str = "json",
+        progress_callback: Optional[Callable[[float], None]] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using Whisper Large v3
@@ -76,7 +77,7 @@ class TranscriptionService:
         # If file is too large, split and process in chunks
         if file_size > self.max_file_size:
             logger.info(f"File size ({file_size / 1024 / 1024:.2f} MB) exceeds limit, splitting into chunks")
-            return self._transcribe_large_file(file_path, language, response_format)
+            return self._transcribe_large_file(file_path, language, response_format, progress_callback)
         
         # Process normally for files under limit
         
@@ -153,7 +154,8 @@ class TranscriptionService:
         self,
         file_path: str,
         language: Optional[str] = None,
-        response_format: str = "json"
+        response_format: str = "json",
+        progress_callback: Optional[Callable[[float], None]] = None
     ) -> Dict[str, Any]:
         """
         Transcribe large file by splitting into chunks and merging results
@@ -220,6 +222,12 @@ class TranscriptionService:
                     
                     if not detected_language and "language" in chunk_result:
                         detected_language = chunk_result["language"]
+                    
+                    # Update progress after each chunk
+                    if progress_callback:
+                        progress = 0.1 + 0.8 * (i + 1) / num_chunks
+                        progress_callback(progress)
+                        logger.info(f"Progress updated: {progress:.2%} after chunk {i+1}/{num_chunks}")
                 
                 finally:
                     # Cleanup temp file

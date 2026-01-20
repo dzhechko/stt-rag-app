@@ -23,6 +23,8 @@ class TranscriptStatus(str, enum.Enum):
 class JobType(str, enum.Enum):
     TRANSCRIPTION = "transcription"
     SUMMARIZATION = "summarization"
+    TRANSLATION = "translation"
+    INDEXING = "indexing"
 
 
 class JobStatus(str, enum.Enum):

@@ -38,6 +38,22 @@ function App() {
             <Route path="/rag/sessions/:sessionId" element={<RAGChatPage />} />
           </Routes>
         </main>
+        
+        <footer className="app-footer">
+          <div className="footer-container">
+            <p className="footer-text">
+              Заметки по ИИ:{' '}
+              <a 
+                href="https://t.me/llm_notes" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="footer-link"
+              >
+                @llm_notes
+              </a>
+            </p>
+          </div>
+        </footer>
       </div>
     </Router>
   )

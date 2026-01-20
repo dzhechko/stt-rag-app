@@ -1,10 +1,12 @@
 import os
 import logging
 import time
+import threading
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from uuid import UUID
 
@@ -48,6 +50,97 @@ from app.monitoring import (
     active_transcriptions,
     active_summarizations
 )
+
+
+def create_translated_json(original_json: dict, translated_text: str) -> dict:
+    """
+    Создает переведенный JSON из оригинального JSON и переведенного текста.
+    Сохраняет структуру сегментов и таймкоды, заменяя только текстовые поля.
+    
+    Args:
+        original_json: Оригинальный JSON транскрипта с сегментами
+        translated_text: Переведенный текст (цельный)
+    
+    Returns:
+        Новый JSON с переведенными сегментами
+    """
+    if not original_json or not translated_text:
+        return original_json
+    
+    # Создаем копию оригинального JSON
+    translated_json = original_json.copy()
+    
+    # Обновляем корневое поле text
+    translated_json["text"] = translated_text
+    
+    # Если есть сегменты, обновляем их
+    if "segments" in original_json and isinstance(original_json["segments"], list):
+        segments = original_json["segments"]
+        if not segments:
+            return translated_json
+        
+        # Собираем оригинальный текст из сегментов для расчета пропорций
+        original_segments_text = []
+        for seg in segments:
+            if isinstance(seg, dict) and "text" in seg:
+                original_segments_text.append(seg.get("text", ""))
+        
+        original_full_text = " ".join(original_segments_text)
+        
+        if not original_full_text:
+            return translated_json
+        
+        # Разбиваем переведенный текст на сегменты пропорционально длине оригинальных
+        translated_segments = []
+        total_original_length = len(original_full_text)
+        
+        if total_original_length == 0:
+            # Если оригинальный текст пуст, возвращаем оригинальный JSON
+            return translated_json
+        
+        translated_text_pos = 0
+        for i, seg in enumerate(segments):
+            if not isinstance(seg, dict):
+                translated_segments.append(seg)
+                continue
+            
+            # Копируем сегмент
+            new_seg = seg.copy()
+            
+            # Вычисляем длину оригинального текста сегмента
+            original_seg_text = seg.get("text", "")
+            original_seg_length = len(original_seg_text)
+            
+            if original_seg_length == 0:
+                new_seg["text"] = ""
+                translated_segments.append(new_seg)
+                continue
+            
+            # Вычисляем пропорцию этого сегмента в общем тексте
+            segment_ratio = original_seg_length / total_original_length
+            
+            # Вычисляем соответствующую длину в переведенном тексте
+            translated_seg_length = int(len(translated_text) * segment_ratio)
+            
+            # Для последнего сегмента берем весь оставшийся текст
+            if i == len(segments) - 1:
+                new_seg["text"] = translated_text[translated_text_pos:].strip()
+            else:
+                if translated_seg_length == 0:
+                    translated_seg_length = 1
+                end_pos = min(translated_text_pos + translated_seg_length, len(translated_text))
+                new_seg["text"] = translated_text[translated_text_pos:end_pos].strip()
+                translated_text_pos = end_pos
+            
+            translated_segments.append(new_seg)
+        
+        translated_json["segments"] = translated_segments
+    
+    # Удаляем или очищаем words, так как они специфичны для оригинального языка
+    if "words" in translated_json:
+        translated_json["words"] = []
+    
+    return translated_json
 
 # Configure logging
 logging.basicConfig(
@@ -202,6 +295,61 @@ async def process_transcription(
             job.progress = 0.1
         db.commit()
         
+        # Get file size for progress emulation
+        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        file_size_mb = file_size / (1024 * 1024)
+        max_file_size = settings.max_file_size_mb * 1024 * 1024
+        
+        # Callback function for updating progress
+        progress_stop_event = threading.Event()
+        
+        def update_progress(progress: float):
+            """Callback for updating progress in database"""
+            try:
+                # Get fresh job from database to avoid session issues
+                fresh_job = db.query(ProcessingJob).filter(
+                    ProcessingJob.transcript_id == transcript_id,
+                    ProcessingJob.job_type == JobType.TRANSCRIPTION
+                ).first()
+                if fresh_job:
+                    fresh_job.progress = min(max(progress, 0.0), 1.0)  # Clamp between 0 and 1
+                    db.commit()
+                    logger.debug(f"Progress updated to {progress:.2%} for transcript {transcript_id}")
+            except Exception as e:
+                logger.error(f"Error updating progress: {str(e)}", exc_info=True)
+        
+        # Emulate progress for regular files (not chunked)
+        def emulate_progress():
+            """Emulate progress based on file size and time"""
+            if file_size <= max_file_size:
+                # Estimate expected duration based on file size
+                if file_size_mb < 5:
+                    # Small files: ~30 seconds
+                    time_to_50 = 10  # 30% of 30s
+                    time_to_90 = 20  # 60% of 30s
+                elif file_size_mb < 15:
+                    # Medium files: ~60 seconds
+                    time_to_50 = 20  # 30% of 60s
+                    time_to_90 = 40  # 60% of 60s
+                else:
+                    # Large files (but not chunked): ~120 seconds
+                    time_to_50 = 30  # 30% of 120s
+                    time_to_90 = 60  # 60% of 120s
+                
+                # Update to 0.5 after time_to_50
+                if not progress_stop_event.wait(time_to_50):
+                    update_progress(0.5)
+                
+                # Update to 0.9 after time_to_90
+                if not progress_stop_event.wait(time_to_90 - time_to_50):
+                    update_progress(0.9)
+        
+        # Start progress emulation thread for regular files
+        progress_thread = None
+        if file_size <= max_file_size:
+            progress_thread = threading.Thread(target=emulate_progress, daemon=True)
+            progress_thread.start()
+        
         # Transcribe
         try:
             active_transcriptions.inc()
@@ -227,8 +375,14 @@ async def process_transcription(
             result = transcription_service.transcribe_file(
                 file_path=file_path,
                 language=normalized_language,
-                response_format="json"  # Evolution Cloud.ru supports: json, text
+                response_format="json",  # Evolution Cloud.ru supports: json, text
+                progress_callback=update_progress if file_size > max_file_size else None  # Only for chunked files
             )
+            
+            # Stop progress emulation when transcription completes
+            if progress_thread:
+                progress_stop_event.set()
+                progress_thread.join(timeout=1.0)
             
             duration = time.time() - start_time
             transcription_duration.observe(duration)
@@ -299,28 +453,21 @@ async def process_transcription(
                 srt=None  # Can be generated from verbose_json if needed
             )
             
+            # Stop progress emulation
+            if progress_thread:
+                progress_stop_event.set()
+            
             # Update job
             if job:
                 job.status = JobStatus.COMPLETED
                 job.progress = 1.0
+                update_progress(1.0)  # Ensure final progress is set
             
             db.commit()
             logger.info(f"Transcription completed for {transcript_id}")
             
-            # Index transcript in RAG system (use translated text if available)
-            try:
-                num_chunks = rag_service.index_transcript(
-                    transcript_id=str(transcript_id),
-                    text=transcription_text,  # Use translated text, not original result["text"]
-                    metadata={"original_filename": transcript.original_filename, "language": detected_language}
-                )
-                if num_chunks > 0:
-                    logger.info(f"Successfully indexed transcript {transcript_id} in RAG system ({num_chunks} chunks)")
-                else:
-                    logger.warning(f"Indexed transcript {transcript_id} but got 0 chunks (Qdrant may not be available)")
-            except Exception as e:
-                logger.error(f"Failed to index transcript {transcript_id} in RAG: {str(e)}", exc_info=True)
-                # Don't fail transcription if indexing fails, but log the error
+            # Note: RAG indexing is now done on-demand via /api/transcripts/{id}/reindex endpoint
+            # This allows users to control when indexing happens and see progress
             
             # Cleanup original file if configured
             file_service.cleanup_original_file(file_path)
@@ -818,12 +965,46 @@ async def reindex_transcript(
     if transcript.status != TranscriptStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Transcript is not completed")
     
+    # Create processing job for indexing
+    job = ProcessingJob(
+        transcript_id=transcript_id,
+        job_type=JobType.INDEXING,
+        status=JobStatus.PROCESSING,
+        progress=0.0
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    
     try:
+        # Callback function for updating indexing progress
+        def update_indexing_progress(progress: float):
+            """Callback for updating indexing progress in database"""
+            try:
+                # Get fresh job from database to avoid session issues
+                fresh_job = db.query(ProcessingJob).filter(
+                    ProcessingJob.transcript_id == transcript_id,
+                    ProcessingJob.job_type == JobType.INDEXING
+                ).order_by(ProcessingJob.created_at.desc()).first()
+                if fresh_job:
+                    fresh_job.progress = min(max(progress, 0.0), 1.0)  # Clamp between 0 and 1
+                    db.commit()
+                    logger.debug(f"Indexing progress updated to {progress:.2%} for transcript {transcript_id}")
+            except Exception as e:
+                logger.error(f"Error updating indexing progress: {str(e)}", exc_info=True)
+        
         num_chunks = rag_service.index_transcript(
             transcript_id=str(transcript_id),
             text=transcript.transcription_text,
-            metadata={"original_filename": transcript.original_filename, "language": transcript.language}
+            metadata={"original_filename": transcript.original_filename, "language": transcript.language},
+            progress_callback=update_indexing_progress
         )
+        # Update job to completed
+        job.status = JobStatus.COMPLETED
+        job.progress = 1.0
+        update_indexing_progress(1.0)
+        db.commit()
+        
         if num_chunks == 0:
             # Check if it's because embeddings are not available
             return {
@@ -839,6 +1020,10 @@ async def reindex_transcript(
     except ValueError as e:
         if "not available" in str(e) or "Embeddings API" in str(e):
             logger.warning(f"Embeddings not available for transcript {transcript_id}: {str(e)}")
+            if job:
+                job.status = JobStatus.FAILED
+                job.error_message = str(e)
+                db.commit()
             return {
                 "message": "Cannot index transcript: Embeddings API is not available. Evolution Cloud.ru does not support embeddings endpoint.",
                 "chunks_indexed": 0,
@@ -848,6 +1033,10 @@ async def reindex_transcript(
         raise
     except Exception as e:
         logger.error(f"Error reindexing transcript {transcript_id}: {str(e)}", exc_info=True)
+        if job:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Error reindexing transcript: {str(e)}")
 
 
@@ -855,9 +1044,10 @@ async def reindex_transcript(
 async def translate_transcript(
     transcript_id: UUID,
     target_language: str = "ru",
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    """Manually translate a transcript to target language"""
+    """Manually translate a transcript to target language (async)"""
     transcript = db.query(Transcript).filter(Transcript.id == transcript_id).first()
     if not transcript:
         raise HTTPException(status_code=404, detail="Transcript not found")
@@ -876,18 +1066,86 @@ async def translate_transcript(
             "already_translated": True
         }
     
+    # Determine source language
+    source_language = "en"
+    if transcript.language and transcript.language.lower() == "ru":
+        source_language = "ru"
+        # If translating Russian to Russian, return current text
+        if target_language == "ru":
+            return {
+                "message": "Transcript is already in Russian",
+                "transcript_id": str(transcript_id),
+                "already_translated": True
+            }
+    
+    # Create processing job for translation
+    job = ProcessingJob(
+        transcript_id=transcript_id,
+        job_type=JobType.TRANSLATION,
+        status=JobStatus.QUEUED,
+        progress=0.0
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    
+    # Start translation in background
+    background_tasks.add_task(
+        process_translation,
+        transcript_id,
+        target_language,
+        source_language,
+        job.id
+    )
+    
+    logger.info(f"Translation job queued for transcript {transcript_id} from {source_language} to {target_language}")
+    
+    return {
+        "message": f"Translation started. Progress will be available in processing jobs.",
+        "transcript_id": str(transcript_id),
+        "job_id": str(job.id),
+        "status": "queued"
+    }
+
+
+async def process_translation(
+    transcript_id: UUID,
+    target_language: str,
+    source_language: str,
+    job_id: UUID
+):
+    """Background task to process translation"""
+    from app.database import SessionLocal
+    
+    db = SessionLocal()
     try:
-        # Determine source language
-        source_language = "en"
-        if transcript.language and transcript.language.lower() == "ru":
-            source_language = "ru"
-            # If translating Russian to Russian, return current text
-            if target_language == "ru":
-                return {
-                    "message": "Transcript is already in Russian",
-                    "transcript_id": str(transcript_id),
-                    "already_translated": True
-                }
+        transcript = db.query(Transcript).filter(Transcript.id == transcript_id).first()
+        if not transcript:
+            logger.error(f"Transcript not found: {transcript_id}")
+            return
+        
+        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+        if not job:
+            logger.error(f"Translation job not found: {job_id}")
+            return
+        
+        # Update job status to processing
+        job.status = JobStatus.PROCESSING
+        job.progress = 0.0
+        db.commit()
+        
+        # Callback function for updating translation progress
+        def update_translation_progress(progress: float):
+            """Callback for updating translation progress in database"""
+            try:
+                # Get fresh job from database to avoid session issues
+                fresh_job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+                if fresh_job:
+                    fresh_job.progress = min(max(progress, 0.0), 1.0)  # Clamp between 0 and 1
+                    db.commit()
+                    logger.debug(f"Translation progress updated to {progress:.2%} for transcript {transcript_id}")
+            except Exception as e:
+                logger.error(f"Error updating translation progress: {str(e)}", exc_info=True)
         
         # Get original text (if already translated, use original from metadata)
         text_to_translate = transcript.transcription_text
@@ -896,19 +1154,38 @@ async def translate_transcript(
             if target_language == "en":
                 text_to_translate = transcript.extra_metadata.get("original_english_text")
         
-        # Translate using SummarizationService (use global instance)
+        # Update progress to indicate translation started
+        update_translation_progress(0.1)
+        
+        # Translate using SummarizationService (use global instance) with progress callback
         translated_text = summarization_service.translate_text(
             text=text_to_translate,
             source_language=source_language,
-            target_language=target_language
+            target_language=target_language,
+            progress_callback=update_translation_progress
         )
         
-        # Save original text if translating to Russian
+        # Save original text and translated JSON if translating from English to Russian
         if target_language == "ru" and source_language == "en":
             if not transcript.extra_metadata:
                 transcript.extra_metadata = {}
             transcript.extra_metadata["original_english_text"] = text_to_translate
             transcript.extra_metadata["translated"] = True
+            
+            # Create translated JSON if original JSON exists
+            if transcript.transcription_json:
+                try:
+                    translated_json = create_translated_json(
+                        original_json=transcript.transcription_json,
+                        translated_text=translated_text
+                    )
+                    transcript.extra_metadata["translated_transcription_json"] = translated_json
+                    # Mark JSON field as modified so SQLAlchemy persists nested changes
+                    flag_modified(transcript, "extra_metadata")
+                    logger.info(f"Created translated JSON for transcript {transcript_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to create translated JSON for transcript {transcript_id}: {str(e)}")
+                    # Continue without translated JSON - frontend will fallback to original
         
         # Update transcript
         transcript.transcription_text = translated_text
@@ -916,25 +1193,30 @@ async def translate_transcript(
         db.commit()
         db.refresh(transcript)
         
-        logger.info(f"Successfully translated transcript {transcript_id} from {source_language} to {target_language}")
+        # Update job to completed
+        job.status = JobStatus.COMPLETED
+        job.progress = 1.0
+        update_translation_progress(1.0)
+        db.commit()
         
-        return {
-            "message": f"Successfully translated transcript to {target_language}",
-            "transcript_id": str(transcript_id),
-            "translated_text": translated_text,
-            "language": target_language
-        }
+        logger.info(f"Successfully translated transcript {transcript_id} from {source_language} to {target_language}")
     
     except Exception as e:
         error_msg = str(e)
-        if "timeout" in error_msg.lower() or "Connection error" in error_msg or "APIConnectionError" in str(type(e).__name__):
-            logger.error(f"Translation timeout or connection error for transcript {transcript_id}: {error_msg}")
-            raise HTTPException(
-                status_code=504,
-                detail=f"Translation timeout or connection error. The transcript may be too long or the API is unavailable. Please try again later."
-            )
         logger.error(f"Error translating transcript {transcript_id}: {error_msg}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error translating transcript: {error_msg}")
+        
+        # Update job to failed
+        try:
+            job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+            if job:
+                job.status = JobStatus.FAILED
+                job.error_message = error_msg
+                db.commit()
+        except Exception as job_error:
+            logger.error(f"Error updating job status to failed: {str(job_error)}", exc_info=True)
+    
+    finally:
+        db.close()
 
 
 @app.get("/api/rag/status")

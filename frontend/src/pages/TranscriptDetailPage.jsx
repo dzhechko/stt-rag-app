@@ -7,7 +7,7 @@ import { getTranscript, getJobs, getSummaries, createSummary, getTranscriptIndex
 import SummaryCreateModal from '../components/SummaryCreateModal'
 import './TranscriptDetailPage.css'
 
-function CopyButton({ text, label = "Copy" }) {
+function CopyButton({ text, label = "Копировать" }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -57,16 +57,51 @@ function TranscriptDetailPage() {
       loadSummaries()
       loadIndexStatus()
     }
-    // Опрос нужен только для pending/processing статусов
-    const interval = setInterval(() => {
+  }, [id])
+
+  // Separate effect for polling during active operations
+  useEffect(() => {
+    // Опрос нужен для pending/processing статусов транскрипта, а также для активных jobs (translation, indexing)
+    const interval = setInterval(async () => {
       if (transcript?.status === 'processing' || transcript?.status === 'pending') {
         loadTranscript()
         loadJobs()
+      } else if (transcript?.status === 'completed') {
+        // Always poll jobs to check for active translation or indexing jobs
+        const jobsData = await loadJobs()
+        
+        // Check if we need to reload index status when indexing is in progress
+        if (jobsData?.some(j => j.job_type === 'indexing' && (j.status === 'processing' || j.status === 'queued'))) {
+          loadIndexStatus()
+        }
+        
+        // Check translation job status - look for ANY translation job, not just active ones
+        const translationJob = jobsData?.find(j => j.job_type === 'translation')
+        if (translationJob) {
+          if (translationJob.status === 'completed') {
+            // Translation completed - reload transcript and stop translating state
+            await loadTranscript()
+            setTranslating(false)
+          } else if (translationJob.status === 'failed') {
+            // Translation failed - show error and stop translating state
+            setTranslating(false)
+            if (translationJob.error_message) {
+              alert(`Ошибка при переводе: ${translationJob.error_message}`)
+            }
+          } else if (translationJob.status === 'processing' || translationJob.status === 'queued') {
+            // Translation in progress - keep translating state true and keep polling
+            // This ensures the progress bar stays visible
+          }
+          // If status is 'processing' or 'queued', keep polling
+        } else if (translating) {
+          // No translation job found but we're in translating state - wait a bit more
+          // Maybe job hasn't been created yet (can take a moment)
+          // Don't reset translating state immediately - give it time
+        }
       }
-      // Убрали опрос summaries и indexStatus при completed - они загружаются только один раз
-    }, 2000)
+    }, 1000) // Poll every 1 second for better responsiveness
     return () => clearInterval(interval)
-  }, [id, transcript?.status])
+  }, [id, transcript?.status, translating])
 
   const loadTranscript = async () => {
     try {
@@ -83,8 +118,10 @@ function TranscriptDetailPage() {
     try {
       const data = await getJobs(id)
       setJobs(data)
+      return data
     } catch (error) {
       console.error('Error loading jobs:', error)
+      return []
     }
   }
 
@@ -123,7 +160,7 @@ function TranscriptDetailPage() {
       setIndexStatus(status)
     } catch (error) {
       console.error('Error loading index status:', error)
-      setIndexStatus({ indexed: false, reason: 'Error checking status' })
+      setIndexStatus({ indexed: false, reason: 'Ошибка при проверке статуса' })
     }
   }
 
@@ -131,20 +168,18 @@ function TranscriptDetailPage() {
     if (!id || reindexing) return
     setReindexing(true)
     try {
+      // Start reindexing (this will create a job on backend)
       const result = await reindexTranscript(id)
-      if (result.chunks_indexed === 0) {
-        if (result.error === 'embeddings_not_available') {
-          alert(`RAG indexing is not available: ${result.reason || result.message}\n\nEvolution Cloud.ru does not support embeddings API endpoint. RAG features are disabled.`)
-        } else {
-          alert(`Reindexed but got 0 chunks. ${result.message || 'RAG indexing may not be available.'}`)
-        }
-      } else {
-        alert(`Successfully reindexed transcript. ${result.chunks_indexed} chunks indexed.`)
-      }
-      await loadIndexStatus()
+      
+      // Immediately load jobs to see the indexing job
+      await loadJobs()
+      
+      // Don't show alert immediately - let user see progress bar
+      // Indexing is happening in background, we'll poll for progress
+      // The result will be checked when job completes
     } catch (error) {
       console.error('Error reindexing transcript:', error)
-      alert(`Error reindexing transcript: ${error.response?.data?.detail || error.message}`)
+      alert(`Ошибка при переиндексации транскрипта: ${error.response?.data?.detail || error.message}`)
     } finally {
       setReindexing(false)
     }
@@ -154,17 +189,28 @@ function TranscriptDetailPage() {
     if (!id || translating) return
     setTranslating(true)
     try {
+      // Start translation (this will create a job on backend and return immediately)
       const result = await translateTranscript(id, targetLanguage)
+      
       if (result.already_translated) {
         alert(result.message)
-      } else {
-        alert(result.message)
-        await loadTranscript() // Reload to get updated text
+        setTranslating(false)
+        return
       }
+      
+      // Immediately load jobs to see the translation job - do this multiple times to ensure we get it
+      await loadJobs()
+      // Wait a bit and load again to catch the job
+      setTimeout(async () => {
+        await loadJobs()
+      }, 500)
+      
+      // Don't show alert - let user see progress bar
+      // Translation is happening in background, we'll poll for progress
+      // Keep translating state true until job completes (handled in useEffect)
     } catch (error) {
       console.error('Error translating transcript:', error)
-      alert(`Error translating transcript: ${error.response?.data?.detail || error.message}`)
-    } finally {
+      alert(`Ошибка при переводе транскрипта: ${error.response?.data?.detail || error.message}`)
       setTranslating(false)
     }
   }
@@ -177,6 +223,46 @@ function TranscriptDetailPage() {
     }
     
     return transcript.transcription_text || ''
+  }
+
+  const getDisplayJSON = () => {
+    if (!transcript?.transcription_json) return null
+    
+    const isTranslated = transcript.extra_metadata?.translated === true
+    const translatedJSON = transcript.extra_metadata?.translated_transcription_json
+    
+    // Debug logging to help verify which JSON is used (can be removed later)
+    console.debug('getDisplayJSON:', {
+      isTranslated,
+      hasTranslatedJSON: Boolean(translatedJSON),
+      viewLanguage,
+      transcriptLanguage: transcript.language,
+    })
+    
+    if (isTranslated && translatedJSON) {
+      // Явно запрошен оригинал — показываем английский JSON
+      if (viewLanguage === 'original') {
+        return transcript.transcription_json
+      }
+      
+      // Явно запрошен русский — показываем переведенный JSON
+      if (viewLanguage === 'ru') {
+        return translatedJSON
+      }
+      
+      // Текущий язык:
+      // - если язык транскрипта сейчас ru, считаем, что основной вид — русский JSON
+      // - иначе оставляем оригинальный JSON
+      if (viewLanguage === 'current') {
+        if (transcript.language?.toLowerCase() === 'ru') {
+          return translatedJSON
+        }
+        return transcript.transcription_json
+      }
+    }
+    
+    // По умолчанию — оригинальный JSON (английский или тот, который пришел с backend)
+    return transcript.transcription_json
   }
 
   const isTranslated = transcript?.extra_metadata?.translated === true
@@ -192,6 +278,22 @@ function TranscriptDetailPage() {
     return (bytes / 1024 / 1024).toFixed(2) + ' MB'
   }
 
+  const getJobTypeLabel = (jobType) => {
+    const labels = {
+      'transcription': 'Транскрибация',
+      'translation': 'Перевод на русский',
+      'indexing': 'Индексация RAG',
+      'summarization': 'Создание протокола встречи'
+    }
+    return labels[jobType] || jobType
+  }
+
+  // Get active translation job - find any translation job (we'll check status in rendering)
+  const translationJob = jobs.find(j => j.job_type === 'translation')
+  
+  // Get active indexing job
+  const indexingJob = jobs.find(j => j.job_type === 'indexing' && (j.status === 'processing' || j.status === 'queued'))
+
   const downloadText = () => {
     if (!transcript?.transcription_text) return
     const blob = new Blob([transcript.transcription_text], { type: 'text/plain' })
@@ -204,8 +306,9 @@ function TranscriptDetailPage() {
   }
 
   const downloadJSON = () => {
-    if (!transcript?.transcription_json) return
-    const blob = new Blob([JSON.stringify(transcript.transcription_json, null, 2)], { type: 'application/json' })
+    const jsonToDownload = getDisplayJSON()
+    if (!jsonToDownload) return
+    const blob = new Blob([JSON.stringify(jsonToDownload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -226,14 +329,14 @@ function TranscriptDetailPage() {
   }
 
   if (loading) {
-    return <div className="loading">Loading transcript...</div>
+    return <div className="loading">Загрузка транскрипта...</div>
   }
 
   if (!transcript) {
     return (
       <div className="error-state">
-        <p>Transcript not found</p>
-        <Link to="/transcripts">Back to Transcripts</Link>
+        <p>Транскрипт не найден</p>
+        <Link to="/transcripts">Вернуться к транскриптам</Link>
       </div>
     )
   }
@@ -243,7 +346,7 @@ function TranscriptDetailPage() {
       <div className="detail-header">
         <button className="btn-back" onClick={() => navigate('/transcripts')}>
           <ArrowLeft size={20} />
-          Back
+          Назад
         </button>
         <h1>{transcript.original_filename}</h1>
       </div>
@@ -252,7 +355,7 @@ function TranscriptDetailPage() {
         <div className="info-card">
           <Clock size={20} />
           <div>
-            <label>Created</label>
+            <label>Создан</label>
             <span>{formatDate(transcript.created_at)}</span>
           </div>
         </div>
@@ -260,7 +363,7 @@ function TranscriptDetailPage() {
           <div className="info-card">
             <Globe size={20} />
             <div>
-              <label>Language</label>
+              <label>Язык</label>
               <span>{transcript.language.toUpperCase()}</span>
             </div>
           </div>
@@ -268,13 +371,13 @@ function TranscriptDetailPage() {
         <div className="info-card">
           <FileText size={20} />
           <div>
-            <label>File Size</label>
+            <label>Размер файла</label>
             <span>{formatFileSize(transcript.file_size)}</span>
           </div>
         </div>
         <div className="info-card">
           <div>
-            <label>Status</label>
+            <label>Статус</label>
             <span className={`status-${transcript.status}`}>{transcript.status}</span>
           </div>
         </div>
@@ -283,45 +386,50 @@ function TranscriptDetailPage() {
       {transcript.status === 'completed' && (
         <div className="rag-index-section">
           <div className="rag-index-header">
-            <h3>RAG Indexing</h3>
+            <h3>Индексация RAG</h3>
             {indexStatus && (
               <div className={`index-status ${indexStatus.indexed ? 'indexed' : 'not-indexed'}`}>
                 {indexStatus.indexed ? (
                   <>
                     <CheckCircle size={16} />
-                    <span>Indexed</span>
+                    <span>Проиндексирован</span>
                   </>
                 ) : (
                   <>
                     <XCircle size={16} />
-                    <span>Not Indexed</span>
+                    <span>Не проиндексирован</span>
                   </>
                 )}
               </div>
             )}
           </div>
-          {indexStatus && !indexStatus.indexed && (
-            <div className="rag-index-actions">
-              <p className="index-reason">{indexStatus.reason || 'Transcript is not indexed in RAG system'}</p>
-              <button
-                className="btn-reindex"
-                onClick={handleReindex}
-                disabled={reindexing}
-              >
-                <RefreshCw size={16} className={reindexing ? 'spinning' : ''} />
-                {reindexing ? 'Reindexing...' : 'Reindex for RAG'}
-              </button>
+          {indexingJob && (indexingJob.status === 'processing' || indexingJob.status === 'queued') && (
+            <div className="indexing-progress">
+              <div className="progress-container">
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${(indexingJob.progress || 0) * 100}%` }}
+                  />
+                </div>
+                <span className="progress-text">
+                  Индексация в процессе... {Math.round((indexingJob.progress || 0) * 100)}%
+                </span>
+              </div>
             </div>
           )}
-          {indexStatus && indexStatus.indexed && (
+          {!indexingJob && (
             <div className="rag-index-actions">
+              {indexStatus && !indexStatus.indexed && (
+                <p className="index-reason">{indexStatus.reason || 'Транскрипт не проиндексирован в системе RAG'}</p>
+              )}
               <button
                 className="btn-reindex"
                 onClick={handleReindex}
                 disabled={reindexing}
               >
                 <RefreshCw size={16} className={reindexing ? 'spinning' : ''} />
-                {reindexing ? 'Reindexing...' : 'Reindex Again'}
+                {reindexing ? 'Индексация...' : (indexStatus && indexStatus.indexed ? 'Переиндексировать снова' : 'Индексировать для RAG')}
               </button>
             </div>
           )}
@@ -331,30 +439,30 @@ function TranscriptDetailPage() {
       {transcript.status === 'completed' && transcript.transcription_text && (
         <div className="translation-section">
           <div className="translation-header">
-            <h3><Languages size={20} />Translation</h3>
+            <h3><Languages size={20} />Перевод</h3>
             {isTranslated && (
               <span className="translation-badge">
                 <CheckCircle size={14} />
-                Translated
+                Переведено
               </span>
             )}
           </div>
           
           <div className="language-switcher">
-            <label>View language:</label>
+            <label>Язык просмотра:</label>
             <div className="language-buttons">
               <button
                 className={viewLanguage === 'current' ? 'active' : ''}
                 onClick={() => setViewLanguage('current')}
               >
-                Current ({transcript.language?.toUpperCase() || 'AUTO'})
+                Текущий ({transcript.language?.toUpperCase() || 'АВТО'})
               </button>
               {hasOriginalEnglish && (
                 <button
                   className={viewLanguage === 'original' ? 'active' : ''}
                   onClick={() => setViewLanguage('original')}
                 >
-                  Original (EN)
+                  Оригинал (EN)
                 </button>
               )}
               {isTranslated && (
@@ -362,18 +470,40 @@ function TranscriptDetailPage() {
                   className={viewLanguage === 'ru' ? 'active' : ''}
                   onClick={() => setViewLanguage('ru')}
                 >
-                  Russian (RU)
+                  Русский (RU)
                 </button>
               )}
             </div>
           </div>
 
-          {!isTranslated && transcript.language?.toLowerCase() !== 'ru' && (
+          {(translationJob || translating) && (translationJob?.status === 'processing' || translationJob?.status === 'queued' || (!translationJob && translating)) && (
+            <div className="translation-progress">
+              <div className="progress-container">
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${(translationJob?.progress || 0) * 100}%` }}
+                  />
+                </div>
+                <span className="progress-text">
+                  Перевод в процессе... {Math.round((translationJob?.progress || 0) * 100)}%
+                </span>
+              </div>
+            </div>
+          )}
+          {translationJob && translationJob.status === 'failed' && (
+            <div className="translation-error">
+              <p className="error-message">
+                Ошибка при переводе: {translationJob.error_message || 'Неизвестная ошибка'}
+              </p>
+            </div>
+          )}
+          {!isTranslated && transcript.language?.toLowerCase() !== 'ru' && !translationJob && !translating && (
             <div className="translation-actions">
               <p className="translation-hint">
                 {transcript.language?.toLowerCase() === 'en' 
-                  ? "This transcript is in English. Would you like to translate it to Russian?"
-                  : "Would you like to translate this transcript to Russian?"}
+                  ? "Этот транскрипт на английском языке. Хотите перевести его на русский?"
+                  : "Хотите перевести этот транскрипт на русский?"}
               </p>
               <button
                 className="btn-translate"
@@ -381,7 +511,7 @@ function TranscriptDetailPage() {
                 disabled={translating}
               >
                 <Languages size={16} />
-                {translating ? 'Translating...' : 'Translate to Russian'}
+                {translating ? 'Перевод...' : 'Перевести на русский'}
               </button>
             </div>
           )}
@@ -390,18 +520,23 @@ function TranscriptDetailPage() {
 
       {jobs.length > 0 && (
         <div className="jobs-section">
-          <h2>Processing Jobs</h2>
+          <h2>Задачи обработки</h2>
           {jobs.map(job => (
             <div key={job.id} className="job-item">
               <div className="job-info">
-                <span className="job-type">{job.job_type}</span>
+                <span className="job-type">{getJobTypeLabel(job.job_type)}</span>
                 <span className={`job-status job-status-${job.status}`}>{job.status}</span>
                 {job.progress > 0 && (
-                  <div className="progress-bar">
-                    <div
-                      className="progress-fill"
-                      style={{ width: `${job.progress * 100}%` }}
-                    />
+                  <div className="progress-container">
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${job.progress * 100}%` }}
+                      />
+                    </div>
+                    <span className="progress-text">
+                      {Math.round(job.progress * 100)}%
+                    </span>
                   </div>
                 )}
               </div>
@@ -419,18 +554,18 @@ function TranscriptDetailPage() {
           <div className="summaries-header">
             <h2>
               <FileCheck size={20} />
-              Summaries
+              Протоколы встреч
             </h2>
             <button
               className="btn-create-summary"
               onClick={() => setShowSummaryModal(true)}
             >
               <Plus size={16} />
-              Create Summary
+              Создать протокол
             </button>
           </div>
           {loadingSummaries ? (
-            <div className="loading">Loading summaries...</div>
+            <div className="loading">Загрузка протоколов встреч...</div>
           ) : summaries.length > 0 ? (
             <div className="summaries-list">
               {summaries.map((summary) => {
@@ -463,7 +598,7 @@ function TranscriptDetailPage() {
                         }}
                       >
                         <ChevronDown size={16} />
-                        <span>Show summary</span>
+                        <span>Показать протокол</span>
                       </button>
                     </div>
                   )
@@ -478,7 +613,7 @@ function TranscriptDetailPage() {
                         {formatDate(summary.created_at)}
                       </span>
                       <div className="summary-actions">
-                        <CopyButton text={summary.summary_text} label="Copy summary" />
+                        <CopyButton text={summary.summary_text} label="Копировать протокол" />
                         <button
                           className="summary-toggle summary-hide-btn"
                           onClick={() => {
@@ -488,7 +623,7 @@ function TranscriptDetailPage() {
                               return newSet
                             })
                           }}
-                          title="Hide summary"
+                          title="Скрыть протокол"
                         >
                           <ChevronUp size={16} />
                           <span>Hide</span>
@@ -497,7 +632,7 @@ function TranscriptDetailPage() {
                     </div>
                     {summary.summary_template && (
                       <span className="summary-template">
-                        Template: {summary.summary_template}
+                        Шаблон: {summary.summary_template}
                       </span>
                     )}
                     {shouldShowToggle && (
@@ -518,12 +653,12 @@ function TranscriptDetailPage() {
                         {isExpanded ? (
                           <>
                             <ChevronUp size={16} />
-                            <span>Show less</span>
+                            <span>Показать меньше</span>
                           </>
                         ) : (
                           <>
                             <ChevronDown size={16} />
-                            <span>Show more</span>
+                            <span>Показать больше</span>
                           </>
                         )}
                       </button>
@@ -539,7 +674,7 @@ function TranscriptDetailPage() {
             </div>
           ) : (
             <div className="empty-summaries">
-              <p>No summaries yet. Create one to get started.</p>
+              <p>Протоколы встреч пока отсутствуют. Создайте первый, чтобы начать.</p>
             </div>
           )}
         </div>
@@ -552,17 +687,17 @@ function TranscriptDetailPage() {
               className={activeTab === 'text' ? 'active' : ''}
               onClick={() => setActiveTab('text')}
             >
-              Text
+              Текст
             </button>
             {summaries.length > 0 && (
               <button
                 className={activeTab === 'summary' ? 'active' : ''}
                 onClick={() => setActiveTab('summary')}
               >
-                Summary
+                Протокол
               </button>
             )}
-            {transcript.transcription_json && (
+            {(transcript.transcription_json || transcript.extra_metadata?.translated_transcription_json) && (
               <button
                 className={activeTab === 'json' ? 'active' : ''}
                 onClick={() => setActiveTab('json')}
@@ -586,24 +721,24 @@ function TranscriptDetailPage() {
               className="btn-download"
             >
               <Edit size={16} />
-              Edit
+              Редактировать
             </Link>
             {transcript.transcription_text && (
               <button className="btn-download" onClick={downloadText}>
                 <Download size={16} />
-                Download Text
+                Скачать текст
               </button>
             )}
-            {transcript.transcription_json && (
+            {(transcript.transcription_json || transcript.extra_metadata?.translated_transcription_json) && (
               <button className="btn-download" onClick={downloadJSON}>
                 <Download size={16} />
-                Download JSON
+                Скачать JSON
               </button>
             )}
             {transcript.transcription_srt && (
               <button className="btn-download" onClick={downloadSRT}>
                 <Download size={16} />
-                Download SRT
+                Скачать SRT
               </button>
             )}
           </div>
@@ -644,7 +779,7 @@ function TranscriptDetailPage() {
                           }}
                         >
                           <ChevronDown size={16} />
-                          <span>Show summary</span>
+                          <span>Показать протокол</span>
                         </button>
                       </div>
                     )
@@ -657,14 +792,14 @@ function TranscriptDetailPage() {
                         <span className="summary-model">{summary.model_used}</span>
                         {summary.summary_template && (
                           <span className="summary-template">
-                            Template: {summary.summary_template}
+                            Шаблон: {summary.summary_template}
                           </span>
                         )}
                         <span className="summary-date">
                           {formatDate(summary.created_at)}
                         </span>
                         <div className="summary-actions">
-                          <CopyButton text={summary.summary_text} label="Copy summary" />
+                          <CopyButton text={summary.summary_text} label="Копировать протокол" />
                           <button
                             className="summary-toggle summary-hide-btn"
                             onClick={() => {
@@ -674,7 +809,7 @@ function TranscriptDetailPage() {
                                 return newSet
                               })
                             }}
-                            title="Hide summary"
+                            title="Скрыть протокол"
                           >
                             <ChevronUp size={16} />
                             <span>Hide</span>
@@ -698,12 +833,12 @@ function TranscriptDetailPage() {
                             {isExpanded ? (
                               <>
                                 <ChevronUp size={16} />
-                                <span>Show less</span>
+                                <span>Показать меньше</span>
                               </>
                             ) : (
                               <>
                                 <ChevronDown size={16} />
-                                <span>Show more</span>
+                                <span>Показать больше</span>
                               </>
                             )}
                           </button>
@@ -719,11 +854,14 @@ function TranscriptDetailPage() {
                 })}
               </div>
             )}
-            {activeTab === 'json' && transcript.transcription_json && (
-              <pre className="json-content">
-                {JSON.stringify(transcript.transcription_json, null, 2)}
-              </pre>
-            )}
+            {activeTab === 'json' && (() => {
+              const displayJSON = getDisplayJSON()
+              return displayJSON ? (
+                <pre className="json-content">
+                  {JSON.stringify(displayJSON, null, 2)}
+                </pre>
+              ) : null
+            })()}
             {activeTab === 'srt' && transcript.transcription_srt && (
               <pre className="srt-content">{transcript.transcription_srt}</pre>
             )}
@@ -740,7 +878,7 @@ function TranscriptDetailPage() {
 
       {transcript.status === 'failed' && (
         <div className="error-state">
-          <p>Transcription failed. Please try uploading again.</p>
+          <p>Транскрибация не удалась. Пожалуйста, попробуйте загрузить снова.</p>
         </div>
       )}
     </div>

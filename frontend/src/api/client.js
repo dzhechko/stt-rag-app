@@ -48,6 +48,11 @@ export const getJobs = async (transcriptId) => {
   return response.data
 }
 
+export const getTranscriptJobs = async (transcriptId) => {
+  // Alias for getJobs for consistency
+  return getJobs(transcriptId)
+}
+
 // Summary API functions
 export const createSummary = async (transcriptId, summaryData) => {
   const response = await client.post('/summaries', {

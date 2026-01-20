@@ -15,9 +15,9 @@ function ChunksDisplay({ chunks }) {
   const formatChunksAsMarkdown = () => {
     let markdown = '## Sources\n\n'
     chunks.forEach((chunk, idx) => {
-      markdown += `### Source ${idx + 1}\n\n`
+      markdown += `### Источник ${idx + 1}\n\n`
       if (chunk.score) {
-        markdown += `**Relevance:** ${(chunk.score * 100).toFixed(1)}%\n\n`
+        markdown += `**Релевантность:** ${(chunk.score * 100).toFixed(1)}%\n\n`
       }
       if (chunk.transcript_id) {
         markdown += `**Transcript:** ${chunk.transcript_id}\n\n`
@@ -36,22 +36,22 @@ function ChunksDisplay({ chunks }) {
           onClick={() => setExpanded(!expanded)}
         >
           <FileText size={14} />
-          <span>{chunks.length} source{chunks.length > 1 ? 's' : ''} used</span>
+          <span>Использовано {chunks.length} {chunks.length === 1 ? 'источник' : chunks.length < 5 ? 'источника' : 'источников'}</span>
           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
-        <CopyButton text={formatChunksAsMarkdown()} label="Copy sources" />
+        <CopyButton text={formatChunksAsMarkdown()} label="Копировать источники" />
       </div>
       {expanded && (
         <div className="chunks-list">
           {chunks.map((chunk, idx) => (
             <div key={idx} className="chunk-item">
               <div className="chunk-header">
-                <span className="chunk-index">Source {idx + 1}</span>
+                <span className="chunk-index">Источник {idx + 1}</span>
                 {chunk.score && (
-                  <span className="chunk-score">Relevance: {(chunk.score * 100).toFixed(1)}%</span>
+                  <span className="chunk-score">Релевантность: {(chunk.score * 100).toFixed(1)}%</span>
                 )}
                 {chunk.transcript_id && (
-                  <span className="chunk-transcript-id">Transcript: {chunk.transcript_id.substring(0, 8)}...</span>
+                  <span className="chunk-transcript-id">Транскрипт: {chunk.transcript_id.substring(0, 8)}...</span>
                 )}
               </div>
               <div className="chunk-text">{chunk.chunk_text || chunk.text || 'No text available'}</div>
@@ -63,7 +63,7 @@ function ChunksDisplay({ chunks }) {
   )
 }
 
-function CopyButton({ text, label = "Copy" }) {
+function CopyButton({ text, label = "Копировать" }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -73,7 +73,7 @@ function CopyButton({ text, label = "Copy" }) {
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
       console.error('Failed to copy:', error)
-      alert('Failed to copy to clipboard')
+      alert('Не удалось скопировать в буфер обмена')
     }
   }
 
@@ -81,10 +81,10 @@ function CopyButton({ text, label = "Copy" }) {
     <button
       className="copy-button"
       onClick={handleCopy}
-      title={copied ? "Copied!" : label}
+      title={copied ? "Скопировано!" : label}
     >
       {copied ? <Check size={16} /> : <Copy size={16} />}
-      <span>{copied ? "Copied" : label}</span>
+      <span>{copied ? "Скопировано" : label}</span>
     </button>
   )
 }
@@ -125,16 +125,16 @@ function FeedbackButtons({ messageId }) {
         title="This answer was helpful"
       >
         <ThumbsUp size={16} />
-        <span>Helpful</span>
+        <span>Полезно</span>
       </button>
       <button
         className={`feedback-btn ${feedback === 'negative' ? 'active' : ''}`}
         onClick={() => handleFeedback('negative')}
         disabled={submitting}
-        title="This answer was not helpful"
+        title="Этот ответ не был полезен"
       >
         <ThumbsDown size={16} />
-        <span>Not helpful</span>
+        <span>Не полезно</span>
       </button>
     </div>
   )
@@ -377,10 +377,10 @@ function RAGChatPage() {
           <button
             className="btn-settings"
             onClick={() => setShowSettings(true)}
-            title="RAG Settings"
+            title="Настройки RAG"
           >
             <Settings size={18} />
-            Settings
+            Настройки
           </button>
         </div>
         <div className="session-controls">
@@ -398,7 +398,7 @@ function RAGChatPage() {
               }}
             />
             <History size={16} />
-            <span>Use History</span>
+            <span>Использовать историю</span>
           </label>
           {useSession && (
             <>
@@ -406,14 +406,14 @@ function RAGChatPage() {
                 className="btn-session-select"
                 onClick={() => setShowSessionSelector(!showSessionSelector)}
               >
-                {currentSessionId ? 'Change Session' : 'Select Session'}
+                {currentSessionId ? 'Изменить сессию' : 'Выбрать сессию'}
               </button>
               {currentSessionId && (
                 <button
                   className="btn-clear-history"
                   onClick={handleClearHistory}
                 >
-                  Clear History
+                  Очистить историю
                 </button>
               )}
             </>
@@ -425,7 +425,7 @@ function RAGChatPage() {
         <div className="session-selector-modal">
           <div className="session-selector-content">
             <div className="session-selector-header">
-              <h3>Manage Sessions</h3>
+              <h3>Управление сессиями</h3>
               <button onClick={() => setShowSessionSelector(false)}>
                 <X size={20} />
               </button>
@@ -433,14 +433,14 @@ function RAGChatPage() {
             <div className="session-create">
               <input
                 type="text"
-                placeholder="New session name..."
+                placeholder="Название новой сессии..."
                 value={sessionName}
                 onChange={(e) => setSessionName(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleCreateSession()}
               />
               <button onClick={handleCreateSession}>
                 <Plus size={16} />
-                Create
+                Создать
               </button>
             </div>
             <div className="sessions-list">
@@ -453,7 +453,7 @@ function RAGChatPage() {
                   >
                     <div className="session-info">
                       <span className="session-name">
-                        {session.session_name || `Session ${session.id.slice(0, 8)}`}
+                        {session.session_name || `Сессия ${session.id.slice(0, 8)}`}
                       </span>
                       <span className="session-date">
                         {new Date(session.created_at).toLocaleDateString()}
@@ -468,7 +468,7 @@ function RAGChatPage() {
                   </div>
                 ))
               ) : (
-                <p className="no-sessions">No sessions yet. Create one to start.</p>
+                <p className="no-sessions">Сессий пока нет. Создайте первую, чтобы начать.</p>
               )}
             </div>
           </div>
@@ -477,11 +477,11 @@ function RAGChatPage() {
 
       <div className="chat-container">
         <div className="transcripts-sidebar">
-          <h3>Select Transcripts</h3>
+          <h3>Выбрать транскрипты</h3>
           <div className="transcripts-list">
             {transcripts.length === 0 ? (
               <p className="info-text" style={{ padding: '1rem', textAlign: 'center', color: '#7f8c8d' }}>
-                No transcripts found. Upload some files first!
+                Транскрипты не найдены. Сначала загрузите файлы!
               </p>
             ) : (
               transcripts
@@ -495,12 +495,12 @@ function RAGChatPage() {
                   
                   let timeAgo = ''
                   if (diffDays > 0) {
-                    timeAgo = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+                    timeAgo = `${diffDays} ${diffDays === 1 ? 'день' : diffDays < 5 ? 'дня' : 'дней'} назад`
                   } else if (diffHours > 0) {
-                    timeAgo = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+                    timeAgo = `${diffHours} ${diffHours === 1 ? 'час' : diffHours < 5 ? 'часа' : 'часов'} назад`
                   } else {
                     const diffMins = Math.floor(diffMs / (1000 * 60))
-                    timeAgo = diffMins > 0 ? `${diffMins} min${diffMins > 1 ? 's' : ''} ago` : 'Just now'
+                    timeAgo = diffMins > 0 ? `${diffMins} ${diffMins === 1 ? 'мин' : diffMins < 5 ? 'минуты' : 'минут'} назад` : 'Только что'
                   }
                   
                   return (
@@ -520,7 +520,7 @@ function RAGChatPage() {
             )}
           </div>
           {selectedTranscripts.length === 0 && (
-            <p className="info-text">No transcripts selected - searching all</p>
+            <p className="info-text">Транскрипты не выбраны - поиск по всем</p>
           )}
         </div>
 
@@ -529,21 +529,21 @@ function RAGChatPage() {
             {messages.length === 0 ? (
               <div className="empty-chat">
                 <MessageSquare size={48} />
-                <p>Ask a question about your transcripts</p>
+                <p>Задайте вопрос о ваших транскриптах</p>
               </div>
             ) : (
               messages.map((msg, idx) => (
                 <div key={idx} className={`message ${msg.type}`}>
                   {msg.type === 'question' && (
                     <div className="message-content">
-                      <strong>You:</strong> {msg.content}
+                      <strong>Вы:</strong> {msg.content}
                     </div>
                   )}
                       {msg.type === 'answer' && (
                         <div className="message-content">
                           <div className="message-header">
-                            <strong>Assistant:</strong>
-                            <CopyButton text={msg.content} label="Copy answer" />
+                            <strong>Ассистент:</strong>
+                            <CopyButton text={msg.content} label="Копировать ответ" />
                           </div>
                           <div className="markdown-content">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -552,14 +552,14 @@ function RAGChatPage() {
                           </div>
                           {msg.qualityScore && (
                             <span className="quality-score">
-                              Quality: {msg.qualityScore.toFixed(1)}/5.0
+                              Качество: {msg.qualityScore.toFixed(1)}/5.0
                             </span>
                           )}
                           {msg.qualityMetrics && (
                             <div className="quality-metrics">
-                              <span>Groundedness: {(msg.qualityMetrics.groundedness * 100).toFixed(0)}%</span>
-                              <span>Completeness: {(msg.qualityMetrics.completeness * 100).toFixed(0)}%</span>
-                              <span>Relevance: {(msg.qualityMetrics.relevance * 100).toFixed(0)}%</span>
+                              <span>Обоснованность: {(msg.qualityMetrics.groundedness * 100).toFixed(0)}%</span>
+                              <span>Полнота: {(msg.qualityMetrics.completeness * 100).toFixed(0)}%</span>
+                              <span>Релевантность: {(msg.qualityMetrics.relevance * 100).toFixed(0)}%</span>
                             </div>
                           )}
                           {msg.retrievedChunks && msg.retrievedChunks.length > 0 && (
@@ -578,7 +578,7 @@ function RAGChatPage() {
             )}
             {loading && (
               <div className="message loading">
-                <div className="message-content">Thinking...</div>
+                <div className="message-content">Думаю...</div>
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -595,7 +595,7 @@ function RAGChatPage() {
                   handleAsk()
                 }
               }}
-              placeholder="Ask a question..."
+              placeholder="Задайте вопрос..."
               disabled={loading}
             />
             <button onClick={handleAsk} disabled={loading || !question.trim()}>
@@ -609,7 +609,7 @@ function RAGChatPage() {
         <div className="settings-modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
             <div className="settings-header">
-              <h3>RAG Settings</h3>
+              <h3>Настройки RAG</h3>
               <button onClick={() => setShowSettings(false)}>
                 <X size={20} />
               </button>
@@ -617,8 +617,8 @@ function RAGChatPage() {
             <div className="settings-content">
               <div className="setting-item">
                 <label htmlFor="top_k">
-                  Number of chunks (top_k):
-                  <span className="setting-hint">More chunks = more context, but may include noise</span>
+                  Количество чанков (top_k):
+                  <span className="setting-hint">Больше чанков = больше контекста, но может включать шум</span>
                 </label>
                 <input
                   id="top_k"
@@ -631,7 +631,7 @@ function RAGChatPage() {
               </div>
               <div className="setting-item">
                 <label htmlFor="model">
-                  Model for answer generation:
+                  Модель для генерации ответа:
                 </label>
                 <select
                   id="model"
@@ -645,8 +645,8 @@ function RAGChatPage() {
               </div>
               <div className="setting-item">
                 <label htmlFor="temperature">
-                  Temperature: {ragSettings.temperature}
-                  <span className="setting-hint">Lower = more factual, Higher = more creative</span>
+                  Температура: {ragSettings.temperature}
+                  <span className="setting-hint">Ниже = более фактично, Выше = более креативно</span>
                 </label>
                 <input
                   id="temperature"
@@ -658,8 +658,8 @@ function RAGChatPage() {
                   onChange={(e) => setRagSettings({...ragSettings, temperature: parseFloat(e.target.value)})}
                 />
                 <div className="temperature-labels">
-                  <span>0.0 (Factual)</span>
-                  <span>1.0 (Creative)</span>
+                  <span>0.0 (Фактично)</span>
+                  <span>1.0 (Креативно)</span>
                 </div>
               </div>
               <div className="setting-item">
@@ -669,10 +669,10 @@ function RAGChatPage() {
                     checked={ragSettings.use_query_expansion}
                     onChange={(e) => setRagSettings({...ragSettings, use_query_expansion: e.target.checked})}
                   />
-                  <span>Enable Query Expansion</span>
+                  <span>Включить расширение запроса</span>
                 </label>
                 <span className="setting-hint">
-                  Automatically reformulates question and generates hypothetical answer for better search
+                  Автоматически переформулирует вопрос и генерирует гипотетический ответ для лучшего поиска
                 </span>
               </div>
               <div className="setting-item">
@@ -682,10 +682,10 @@ function RAGChatPage() {
                     checked={ragSettings.use_multi_hop}
                     onChange={(e) => setRagSettings({...ragSettings, use_multi_hop: e.target.checked})}
                   />
-                  <span>Enable Multi-hop Reasoning</span>
+                  <span>Включить многошаговое рассуждение</span>
                 </label>
                 <span className="setting-hint">
-                  Breaks complex questions into sub-queries for deeper search (overrides Query Expansion)
+                  Разбивает сложные вопросы на подзапросы для более глубокого поиска (переопределяет расширение запроса)
                 </span>
               </div>
               <div className="setting-item">
@@ -695,10 +695,10 @@ function RAGChatPage() {
                     checked={ragSettings.use_hybrid_search}
                     onChange={(e) => setRagSettings({...ragSettings, use_hybrid_search: e.target.checked})}
                   />
-                  <span>Enable Hybrid Search</span>
+                  <span>Включить гибридный поиск</span>
                 </label>
                 <span className="setting-hint">
-                  Combines vector (semantic) and BM25 (keyword) search for better coverage
+                  Объединяет векторный (семантический) и BM25 (ключевые слова) поиск для лучшего покрытия
                 </span>
               </div>
               <div className="setting-item">
@@ -708,15 +708,15 @@ function RAGChatPage() {
                     checked={ragSettings.use_reranking}
                     onChange={(e) => setRagSettings({...ragSettings, use_reranking: e.target.checked})}
                   />
-                  <span>Enable Reranking</span>
+                  <span>Включить реранкинг</span>
                 </label>
                 <span className="setting-hint">
-                  Reorders retrieved chunks by relevance using specialized model for better accuracy
+                  Переупорядочивает найденные чанки по релевантности с использованием специализированной модели для лучшей точности
                 </span>
               </div>
               <div className="setting-item">
                 <label htmlFor="reranker_model">
-                  Reranker Model:
+                  Модель реранкинга:
                 </label>
                 <select
                   id="reranker_model"
@@ -735,16 +735,16 @@ function RAGChatPage() {
                     checked={ragSettings.use_advanced_grading}
                     onChange={(e) => setRagSettings({...ragSettings, use_advanced_grading: e.target.checked})}
                   />
-                  <span>Enable Advanced Quality Grading</span>
+                  <span>Включить расширенную оценку качества</span>
                 </label>
                 <span className="setting-hint">
-                  Evaluates groundedness, completeness, and relevance of answers
+                  Оценивает обоснованность, полноту и релевантность ответов
                 </span>
               </div>
               <div className="settings-info">
-                <h4>Advanced RAG Algorithm Description</h4>
+                <h4>Описание расширенного алгоритма RAG</h4>
                 <div className="algorithm-description">
-                  <p><strong>Current Implementation:</strong></p>
+                  <p><strong>Текущая реализация:</strong></p>
                   <ol>
                     <li><strong>Multi-hop Reasoning</strong> (if enabled):
                       <ul>
@@ -802,7 +802,7 @@ function RAGChatPage() {
               </div>
             </div>
             <div className="settings-footer">
-              <button onClick={() => setShowSettings(false)}>Close</button>
+              <button onClick={() => setShowSettings(false)}>Закрыть</button>
             </div>
           </div>
         </div>

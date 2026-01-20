@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { FileText, Clock, Globe, Trash2, Eye, ChevronDown, ChevronUp } from 'lucide-react'
-import { getTranscripts, deleteTranscript } from '../api/client'
+import { getTranscripts, deleteTranscript, getTranscriptJobs } from '../api/client'
 import './TranscriptsPage.css'
 
 function TranscriptsPage() {
@@ -10,10 +10,45 @@ function TranscriptsPage() {
   const [filter, setFilter] = useState({ status: '', language: '' })
   const [expandedTranscripts, setExpandedTranscripts] = useState(new Set())
   const [transcriptViewMode, setTranscriptViewMode] = useState({}) // { transcriptId: 'text' | 'json' | 'srt' }
+  const [transcriptProgress, setTranscriptProgress] = useState({}) // { transcriptId: progress }
 
   useEffect(() => {
     loadTranscripts()
   }, [filter])
+
+  // Poll progress for transcripts in processing/pending status
+  useEffect(() => {
+    const processingTranscripts = transcripts.filter(
+      t => t.status === 'processing' || t.status === 'pending'
+    )
+
+    if (processingTranscripts.length === 0) return
+
+    const pollProgress = async () => {
+      for (const transcript of processingTranscripts) {
+        try {
+          const jobs = await getTranscriptJobs(transcript.id)
+          const transcriptionJob = jobs.find(j => j.job_type === 'transcription')
+          if (transcriptionJob && transcriptionJob.progress !== undefined) {
+            setTranscriptProgress(prev => ({
+              ...prev,
+              [transcript.id]: transcriptionJob.progress
+            }))
+          }
+        } catch (error) {
+          console.error(`Error polling progress for transcript ${transcript.id}:`, error)
+        }
+      }
+    }
+
+    // Poll immediately (for fast transcriptions)
+    pollProgress()
+
+    // Then poll every 2 seconds
+    const interval = setInterval(pollProgress, 2000)
+
+    return () => clearInterval(interval)
+  }, [transcripts])
 
   const loadTranscripts = async () => {
     setLoading(true)
@@ -31,7 +66,7 @@ function TranscriptsPage() {
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this transcript?')) {
+    if (!window.confirm('Вы уверены, что хотите удалить этот транскрипт?')) {
       return
     }
     
@@ -40,7 +75,7 @@ function TranscriptsPage() {
       loadTranscripts()
     } catch (error) {
       console.error('Error deleting transcript:', error)
-      alert('Error deleting transcript')
+      alert('Ошибка при удалении транскрипта')
     }
   }
 
@@ -82,43 +117,43 @@ function TranscriptsPage() {
       case 'json':
         return transcript.transcription_json 
           ? JSON.stringify(transcript.transcription_json, null, 2)
-          : 'No JSON data available'
+          : 'Данные JSON недоступны'
       case 'srt':
-        return transcript.transcription_srt || 'No SRT data available'
+        return transcript.transcription_srt || 'Данные SRT недоступны'
       default:
-        return transcript.transcription_text || 'No text available'
+        return transcript.transcription_text || 'Текст недоступен'
     }
   }
 
   if (loading) {
-    return <div className="loading">Loading transcripts...</div>
+    return <div className="loading">Загрузка транскриптов...</div>
   }
 
   return (
     <div className="transcripts-page">
       <div className="page-header">
-        <h1>Transcripts</h1>
+        <h1>Транскрипты</h1>
         <div className="filters">
           <select
             value={filter.status}
             onChange={(e) => setFilter({ ...filter, status: e.target.value })}
           >
-            <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
+            <option value="">Все статусы</option>
+            <option value="pending">Ожидание</option>
+            <option value="processing">Обработка</option>
+            <option value="completed">Завершено</option>
+            <option value="failed">Ошибка</option>
           </select>
           <select
             value={filter.language}
             onChange={(e) => setFilter({ ...filter, language: e.target.value })}
           >
-            <option value="">All Languages</option>
-            <option value="ru">Russian</option>
-            <option value="en">English</option>
-            <option value="de">German</option>
-            <option value="fr">French</option>
-            <option value="es">Spanish</option>
+            <option value="">Все языки</option>
+            <option value="ru">Русский</option>
+            <option value="en">Английский</option>
+            <option value="de">Немецкий</option>
+            <option value="fr">Французский</option>
+            <option value="es">Испанский</option>
           </select>
         </div>
       </div>
@@ -126,8 +161,8 @@ function TranscriptsPage() {
       {transcripts.length === 0 ? (
         <div className="empty-state">
           <FileText size={64} />
-          <p>No transcripts found</p>
-          <Link to="/" className="btn-primary">Upload Files</Link>
+          <p>Транскрипты не найдены</p>
+          <Link to="/upload" className="btn-primary">Загрузить файлы</Link>
         </div>
       ) : (
         <div className="transcripts-grid">
@@ -150,7 +185,7 @@ function TranscriptsPage() {
                   </div>
                 )}
                 <div className="info-item">
-                  <span>Size: {formatFileSize(transcript.file_size)}</span>
+                  <span>Размер: {formatFileSize(transcript.file_size)}</span>
                 </div>
               </div>
 
@@ -161,6 +196,20 @@ function TranscriptsPage() {
                 >
                   {transcript.status}
                 </span>
+                {(transcript.status === 'processing' || transcript.status === 'pending') && 
+                 transcriptProgress[transcript.id] !== undefined && (
+                  <div className="progress-container">
+                    <div className="progress-bar">
+                      <div 
+                        className="progress-fill"
+                        style={{ width: `${(transcriptProgress[transcript.id] || 0) * 100}%` }}
+                      />
+                    </div>
+                    <span className="progress-text">
+                      {Math.round((transcriptProgress[transcript.id] || 0) * 100)}%
+                    </span>
+                  </div>
+                )}
               </div>
 
               {transcript.transcription_text && (
@@ -171,7 +220,7 @@ function TranscriptsPage() {
                       onClick={() => toggleTranscript(transcript.id)}
                     >
                       <ChevronDown size={16} />
-                      <span>Show transcript</span>
+                      <span>Показать транскрипт</span>
                     </button>
                   ) : (
                     <>
@@ -181,7 +230,7 @@ function TranscriptsPage() {
                           onClick={() => toggleTranscript(transcript.id)}
                         >
                           <ChevronUp size={16} />
-                          <span>Hide transcript</span>
+                          <span>Скрыть транскрипт</span>
                         </button>
                       </div>
                       <div className="transcript-expanded">
@@ -190,7 +239,7 @@ function TranscriptsPage() {
                             className={transcriptViewMode[transcript.id] === 'text' || !transcriptViewMode[transcript.id] ? 'active' : ''}
                             onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'text' })}
                           >
-                            Text
+                            Текст
                           </button>
                           {transcript.transcription_json && (
                             <button
@@ -224,14 +273,14 @@ function TranscriptsPage() {
                   className="btn-action"
                 >
                   <Eye size={16} />
-                  View
+                  Просмотр
                 </Link>
                 <button
                   className="btn-action btn-danger"
                   onClick={() => handleDelete(transcript.id)}
                 >
                   <Trash2 size={16} />
-                  Delete
+                  Удалить
                 </button>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import logging
 import httpx
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 from openai import OpenAI
 from app.config import settings
 
@@ -49,7 +49,8 @@ class SummarizationService:
         text: str,
         source_language: str = "en",
         target_language: str = "ru",
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        progress_callback: Optional[Callable[[float], None]] = None
     ) -> str:
         """
         Translate text from source language to target language using GigaChat
@@ -69,7 +70,7 @@ class SummarizationService:
         max_chunk_length = 3000  # Characters per chunk (approximately 750 tokens)
         if len(text) > max_chunk_length:
             logger.info(f"Text is too long ({len(text)} chars), splitting into chunks for translation")
-            return self._translate_large_text(text, source_language, target_language, model)
+            return self._translate_large_text(text, source_language, target_language, model, progress_callback)
         
         lang_names = {
             "en": "английский",
@@ -88,6 +89,10 @@ class SummarizationService:
         )
         
         try:
+            # Update progress to indicate translation started (for short texts)
+            if progress_callback:
+                progress_callback(0.2)
+            
             response = self.client.chat.completions.create(
                 model=model,
                 messages=[
@@ -105,6 +110,11 @@ class SummarizationService:
             )
             
             translated_text = response.choices[0].message.content.strip()
+            
+            # Update progress to indicate translation completed
+            if progress_callback:
+                progress_callback(1.0)
+            
             logger.info(f"Successfully translated text from {source_language} to {target_language} ({len(text)} chars)")
             return translated_text
             
@@ -117,7 +127,8 @@ class SummarizationService:
         text: str,
         source_language: str,
         target_language: str,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        progress_callback: Optional[Callable[[float], None]] = None
     ) -> str:
         """
         Translate large text by splitting it into chunks
@@ -197,10 +208,20 @@ class SummarizationService:
                 
                 translated_chunk = response.choices[0].message.content.strip()
                 translated_chunks.append(translated_chunk)
+                
+                # Update progress after each chunk
+                if progress_callback:
+                    progress = 0.1 + 0.8 * (i + 1) / len(chunks)
+                    progress_callback(progress)
+                    logger.debug(f"Translation progress updated: {progress:.2%} after chunk {i+1}/{len(chunks)}")
             except Exception as e:
                 logger.error(f"Error translating chunk {i+1}: {str(e)}")
                 # If chunk translation fails, try to continue with other chunks
                 translated_chunks.append(f"[Translation error for chunk {i+1}]")
+                # Still update progress even on error
+                if progress_callback:
+                    progress = 0.1 + 0.8 * (i + 1) / len(chunks)
+                    progress_callback(progress)
         
         # Combine translated chunks
         translated_text = " ".join(translated_chunks)
