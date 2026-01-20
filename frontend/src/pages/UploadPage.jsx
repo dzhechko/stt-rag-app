@@ -150,18 +150,29 @@ function UploadPage() {
             }
           )
           
-          // Update status to processing and set transcriptId
+          // Ensure uploadProgress is 1.0 after upload completes, then update status to processing
           setFiles(prev => prev.map((f, idx) => 
-            idx === i ? { ...f, status: 'processing', transcriptId: result.id } : f
+            idx === i ? { ...f, uploadProgress: 1.0, status: 'processing', transcriptId: result.id } : f
           ))
           
           // Initialize transcription progress immediately
           setFileProgress(prev => ({ ...prev, [result.id]: 0.0 }))
           
-          // Start polling immediately for this file (don't wait)
-          setTimeout(() => {
-            pollTranscriptionProgress(result.id)
-          }, 100)
+          // Start polling immediately for this file (useEffect will handle the interval)
+          // But trigger first poll right away to get initial progress
+          pollTranscriptionProgress(result.id).then(shouldStop => {
+            if (!shouldStop && !intervalsRef.current[result.id]) {
+              // Start polling interval if not already started
+              const interval = setInterval(async () => {
+                const stop = await pollTranscriptionProgress(result.id)
+                if (stop) {
+                  clearInterval(interval)
+                  delete intervalsRef.current[result.id]
+                }
+              }, 1000) // Poll every 1 second
+              intervalsRef.current[result.id] = interval
+            }
+          })
           
           // Navigate to transcripts page after first successful upload
           if (i === 0) {
@@ -264,9 +275,13 @@ function UploadPage() {
                           const transcriptionProgress = fileItem.transcriptId
                             ? (fileProgress[fileItem.transcriptId] || 0)
                             : 0
+                          // If transcriptId exists, upload is complete, so use: 0.4 + 0.6 * transcriptionProgress
+                          // Otherwise, use upload progress only
                           const combined = fileItem.transcriptId
-                            ? 0.4 * uploadProgress + 0.6 * transcriptionProgress
+                            ? 0.4 + 0.6 * transcriptionProgress
                             : uploadProgress
+                          // Debug logging (temporary)
+                          console.log(`[Progress Debug] File: ${fileItem.file.name}, transcriptId: ${fileItem.transcriptId}, uploadProgress: ${uploadProgress}, transcriptionProgress: ${transcriptionProgress}, combined: ${combined}`)
                           return (
                             <div
                               className="progress-fill"
@@ -279,8 +294,7 @@ function UploadPage() {
                         {fileItem.transcriptId
                           ? `Транскрибация... ${Math.round(
                               (
-                                0.4 * (fileItem.uploadProgress ?? 0) +
-                                0.6 * (fileProgress[fileItem.transcriptId] || 0)
+                                0.4 + 0.6 * (fileProgress[fileItem.transcriptId] || 0)
                               ) * 100
                             )}%`
                           : `Загрузка файла... ${Math.round(
