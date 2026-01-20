@@ -178,9 +178,25 @@ function TranscriptDetailPage() {
         // Always poll jobs to check for active translation or indexing jobs
         const jobsData = await loadJobs()
         
-        // Check if we need to reload index status when indexing is in progress
-        if (jobsData?.some(j => j.job_type === 'indexing' && (j.status === 'processing' || j.status === 'queued'))) {
-          loadIndexStatus()
+        // Check indexing job status - look for ANY indexing job, not just active ones
+        const indexingJobData = jobsData?.find(j => j.job_type === 'indexing')
+        if (indexingJobData) {
+          console.log('[Polling] Indexing job status:', indexingJobData.status, 'progress:', indexingJobData.progress)
+          if (indexingJobData.status === 'completed') {
+            // Indexing completed - reload index status to show "Проиндексирован"
+            console.log('[Polling] Indexing completed! Reloading index status...')
+            await loadIndexStatus()
+          } else if (indexingJobData.status === 'failed') {
+            // Indexing failed - show error and reload status
+            console.log('[Polling] Indexing failed!')
+            await loadIndexStatus()
+            if (indexingJobData.error_message) {
+              alert(`Ошибка при индексации: ${indexingJobData.error_message}`)
+            }
+          } else if (indexingJobData.status === 'processing' || indexingJobData.status === 'queued') {
+            // Indexing in progress - reload status to update progress display
+            loadIndexStatus()
+          }
         }
         
         // Check translation job status - look for ANY translation job, not just active ones
