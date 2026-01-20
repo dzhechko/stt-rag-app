@@ -11,6 +11,7 @@ function UploadPage() {
   const [fileProgress, setFileProgress] = useState({}) // { transcriptId: progress }
   const navigate = useNavigate()
   const intervalsRef = useRef({})
+  const pollingAttemptsRef = useRef({}) // { transcriptId: count } - track polling attempts for missing jobs
 
   const handleDrop = useCallback((e) => {
     e.preventDefault()
@@ -44,16 +45,30 @@ function UploadPage() {
   }
 
   const pollTranscriptionProgress = async (transcriptId) => {
+    console.log(`[Polling] Starting poll for transcriptId: ${transcriptId}`)
     try {
       const jobs = await getTranscriptJobs(transcriptId)
+      console.log(`[Polling] Received jobs for ${transcriptId}:`, jobs)
       const transcriptionJob = jobs.find(j => j.job_type === 'transcription')
+      console.log(`[Polling] Found transcriptionJob:`, transcriptionJob)
+      
       if (transcriptionJob) {
+        // Reset polling attempts counter when job is found
+        pollingAttemptsRef.current[transcriptId] = 0
+        
         // Always update progress if job exists
         if (transcriptionJob.progress !== undefined) {
-          setFileProgress(prev => ({
-            ...prev,
-            [transcriptId]: transcriptionJob.progress
-          }))
+          console.log(`[Polling] Updating fileProgress for ${transcriptId} to ${transcriptionJob.progress}`)
+          setFileProgress(prev => {
+            const updated = {
+              ...prev,
+              [transcriptId]: transcriptionJob.progress
+            }
+            console.log(`[Polling] fileProgress updated:`, updated)
+            return updated
+          })
+        } else {
+          console.log(`[Polling] transcriptionJob.progress is undefined for ${transcriptId}`)
         }
         
         // Update file status based on job status
@@ -66,6 +81,7 @@ function UploadPage() {
           ))
         } else if (transcriptionJob.status === 'completed') {
           // Transcription completed
+          console.log(`[Polling] Transcription completed for ${transcriptId}`)
           setFiles(prev => prev.map(f => 
             f.transcriptId === transcriptId 
               ? { ...f, status: 'transcribed' }
@@ -73,6 +89,7 @@ function UploadPage() {
           ))
         } else if (transcriptionJob.status === 'failed') {
           // Transcription failed
+          console.log(`[Polling] Transcription failed for ${transcriptId}:`, transcriptionJob.error_message)
           setFiles(prev => prev.map(f => 
             f.transcriptId === transcriptId 
               ? { ...f, status: 'error', error: transcriptionJob.error_message || 'Ошибка транскрибации' }
@@ -81,10 +98,25 @@ function UploadPage() {
         }
         
         // Return true if we should stop polling (completed or failed)
-        return transcriptionJob.status === 'completed' || transcriptionJob.status === 'failed'
+        const shouldStop = transcriptionJob.status === 'completed' || transcriptionJob.status === 'failed'
+        console.log(`[Polling] Should stop polling for ${transcriptId}:`, shouldStop)
+        return shouldStop
+      } else {
+        console.log(`[Polling] No transcriptionJob found for ${transcriptId}, jobs:`, jobs)
+        // Increment polling attempts counter
+        pollingAttemptsRef.current[transcriptId] = (pollingAttemptsRef.current[transcriptId] || 0) + 1
+        const attempts = pollingAttemptsRef.current[transcriptId]
+        console.log(`[Polling] Polling attempts for ${transcriptId}: ${attempts}`)
+        
+        // Continue polling if job not found yet (it might be created soon)
+        // Stop after 60 attempts (60 seconds) if job never appears
+        if (attempts > 60) {
+          console.warn(`[Polling] Stopping polling for ${transcriptId} after 60 attempts - job never appeared`)
+          return true // Stop polling
+        }
       }
     } catch (error) {
-      console.error('Error polling progress:', error)
+      console.error(`[Polling] Error polling progress for ${transcriptId}:`, error)
     }
     return false
   }
@@ -96,22 +128,28 @@ function UploadPage() {
       if (fileItem.transcriptId && (fileItem.status === 'uploading' || fileItem.status === 'processing' || fileItem.status === 'completed')) {
         // Не создавать дублирующие интервалы для одного transcriptId
         if (!intervalsRef.current[fileItem.transcriptId]) {
-          // First poll immediately (for fast transcriptions)
+          console.log(`[Polling] Starting polling interval for transcriptId: ${fileItem.transcriptId}`)
+          // First poll immediately (for fast transcriptions and to get initial progress)
           pollTranscriptionProgress(fileItem.transcriptId).then(shouldStop => {
             if (shouldStop) {
+              console.log(`[Polling] Stopping polling for ${fileItem.transcriptId} - job completed/failed`)
               return
             }
             
-            // Then start polling for this file
+            // Then start polling interval for this file
             const interval = setInterval(async () => {
               const stop = await pollTranscriptionProgress(fileItem.transcriptId)
               if (stop) {
+                console.log(`[Polling] Clearing interval for ${fileItem.transcriptId}`)
                 clearInterval(interval)
                 delete intervalsRef.current[fileItem.transcriptId]
               }
             }, 1000) // Poll every 1 second for better responsiveness
             intervalsRef.current[fileItem.transcriptId] = interval
+            console.log(`[Polling] Polling interval started for ${fileItem.transcriptId}`)
           })
+        } else {
+          console.log(`[Polling] Polling already active for transcriptId: ${fileItem.transcriptId}`)
         }
       }
     })
@@ -158,21 +196,8 @@ function UploadPage() {
           // Initialize transcription progress immediately
           setFileProgress(prev => ({ ...prev, [result.id]: 0.0 }))
           
-          // Start polling immediately for this file (useEffect will handle the interval)
-          // But trigger first poll right away to get initial progress
-          pollTranscriptionProgress(result.id).then(shouldStop => {
-            if (!shouldStop && !intervalsRef.current[result.id]) {
-              // Start polling interval if not already started
-              const interval = setInterval(async () => {
-                const stop = await pollTranscriptionProgress(result.id)
-                if (stop) {
-                  clearInterval(interval)
-                  delete intervalsRef.current[result.id]
-                }
-              }, 1000) // Poll every 1 second
-              intervalsRef.current[result.id] = interval
-            }
-          })
+          // useEffect will handle polling automatically when files state updates
+          // No need to start polling here - useEffect will catch the state change
           
           // Navigate to transcripts page after first successful upload
           if (i === 0) {
