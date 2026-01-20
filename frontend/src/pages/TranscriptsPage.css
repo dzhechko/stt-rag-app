@@ -251,3 +251,37 @@
   margin-top: 0.5rem;
 }
 
+/* Скрытые транскрипты */
+.transcript-hidden {
+  background: #f8f9fa;
+  border-left: 3px solid #95a5a6;
+  padding: 0.75rem 1rem;
+  min-height: auto;
+}
+
+.transcript-hidden .transcript-toggle {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+/* Transcript header для кнопки Hide */
+.transcript-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+/* Кнопка скрытия транскрипта */
+.transcript-hide-btn {
+  background: #fee;
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+.transcript-hide-btn:hover {
+  background: #fdd;
+  border-color: #c0392b;
+  color: #c0392b;
+}
+

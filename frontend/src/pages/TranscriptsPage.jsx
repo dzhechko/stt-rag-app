@@ -164,53 +164,56 @@ function TranscriptsPage() {
               </div>
 
               {transcript.transcription_text && (
-                <div className="card-preview">
-                  <button
-                    className="transcript-toggle"
-                    onClick={() => toggleTranscript(transcript.id)}
-                  >
-                    {expandedTranscripts.has(transcript.id) ? (
-                      <>
-                        <ChevronUp size={16} />
-                        <span>Hide transcript</span>
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown size={16} />
-                        <span>Show transcript</span>
-                      </>
-                    )}
-                  </button>
-                  {expandedTranscripts.has(transcript.id) && (
-                    <div className="transcript-expanded">
-                      <div className="transcript-view-tabs">
+                <div className={`card-preview ${!expandedTranscripts.has(transcript.id) ? 'transcript-hidden' : ''}`}>
+                  {!expandedTranscripts.has(transcript.id) ? (
+                    <button
+                      className="transcript-toggle"
+                      onClick={() => toggleTranscript(transcript.id)}
+                    >
+                      <ChevronDown size={16} />
+                      <span>Show transcript</span>
+                    </button>
+                  ) : (
+                    <>
+                      <div className="transcript-header">
                         <button
-                          className={transcriptViewMode[transcript.id] === 'text' || !transcriptViewMode[transcript.id] ? 'active' : ''}
-                          onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'text' })}
+                          className="transcript-toggle transcript-hide-btn"
+                          onClick={() => toggleTranscript(transcript.id)}
                         >
-                          Text
+                          <ChevronUp size={16} />
+                          <span>Hide transcript</span>
                         </button>
-                        {transcript.transcription_json && (
-                          <button
-                            className={transcriptViewMode[transcript.id] === 'json' ? 'active' : ''}
-                            onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'json' })}
-                          >
-                            JSON
-                          </button>
-                        )}
-                        {transcript.transcription_srt && (
-                          <button
-                            className={transcriptViewMode[transcript.id] === 'srt' ? 'active' : ''}
-                            onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'srt' })}
-                          >
-                            SRT
-                          </button>
-                        )}
                       </div>
-                      <div className="transcript-content">
-                        <pre>{getTranscriptContent(transcript)}</pre>
+                      <div className="transcript-expanded">
+                        <div className="transcript-view-tabs">
+                          <button
+                            className={transcriptViewMode[transcript.id] === 'text' || !transcriptViewMode[transcript.id] ? 'active' : ''}
+                            onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'text' })}
+                          >
+                            Text
+                          </button>
+                          {transcript.transcription_json && (
+                            <button
+                              className={transcriptViewMode[transcript.id] === 'json' ? 'active' : ''}
+                              onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'json' })}
+                            >
+                              JSON
+                            </button>
+                          )}
+                          {transcript.transcription_srt && (
+                            <button
+                              className={transcriptViewMode[transcript.id] === 'srt' ? 'active' : ''}
+                              onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'srt' })}
+                            >
+                              SRT
+                            </button>
+                          )}
+                        </div>
+                        <div className="transcript-content">
+                          <pre>{getTranscriptContent(transcript)}</pre>
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
                 </div>
               )}

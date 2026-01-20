@@ -1,11 +1,37 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, FileText, Clock, Globe, Edit, FileCheck, Plus, RefreshCw, CheckCircle, XCircle, Languages, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Clock, Globe, Edit, FileCheck, Plus, RefreshCw, CheckCircle, XCircle, Languages, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getTranscript, getJobs, getSummaries, createSummary, getTranscriptIndexStatus, reindexTranscript, translateTranscript } from '../api/client'
 import SummaryCreateModal from '../components/SummaryCreateModal'
 import './TranscriptDetailPage.css'
+
+function CopyButton({ text, label = "Copy" }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy:', error)
+      alert('Failed to copy to clipboard')
+    }
+  }
+
+  return (
+    <button
+      className="copy-button"
+      onClick={handleCopy}
+      title={copied ? "Copied!" : label}
+    >
+      {copied ? <Check size={16} /> : <Copy size={16} />}
+      <span>{copied ? "Copied" : label}</span>
+    </button>
+  )
+}
 
 function TranscriptDetailPage() {
   const { id } = useParams()
@@ -451,20 +477,23 @@ function TranscriptDetailPage() {
                       <span className="summary-date">
                         {formatDate(summary.created_at)}
                       </span>
-                      <button
-                        className="summary-toggle summary-hide-btn"
-                        onClick={() => {
-                          setVisibleSummaries(prev => {
-                            const newSet = new Set(prev)
-                            newSet.delete(summary.id)
-                            return newSet
-                          })
-                        }}
-                        title="Hide summary"
-                      >
-                        <ChevronUp size={16} />
-                        <span>Hide</span>
-                      </button>
+                      <div className="summary-actions">
+                        <CopyButton text={summary.summary_text} label="Copy summary" />
+                        <button
+                          className="summary-toggle summary-hide-btn"
+                          onClick={() => {
+                            setVisibleSummaries(prev => {
+                              const newSet = new Set(prev)
+                              newSet.delete(summary.id)
+                              return newSet
+                            })
+                          }}
+                          title="Hide summary"
+                        >
+                          <ChevronUp size={16} />
+                          <span>Hide</span>
+                        </button>
+                      </div>
                     </div>
                     {summary.summary_template && (
                       <span className="summary-template">
@@ -634,20 +663,23 @@ function TranscriptDetailPage() {
                         <span className="summary-date">
                           {formatDate(summary.created_at)}
                         </span>
-                        <button
-                          className="summary-toggle summary-hide-btn"
-                          onClick={() => {
-                            setVisibleSummaries(prev => {
-                              const newSet = new Set(prev)
-                              newSet.delete(summary.id)
-                              return newSet
-                            })
-                          }}
-                          title="Hide summary"
-                        >
-                          <ChevronUp size={16} />
-                          <span>Hide</span>
-                        </button>
+                        <div className="summary-actions">
+                          <CopyButton text={summary.summary_text} label="Copy summary" />
+                          <button
+                            className="summary-toggle summary-hide-btn"
+                            onClick={() => {
+                              setVisibleSummaries(prev => {
+                                const newSet = new Set(prev)
+                                newSet.delete(summary.id)
+                                return newSet
+                              })
+                            }}
+                            title="Hide summary"
+                          >
+                            <ChevronUp size={16} />
+                            <span>Hide</span>
+                          </button>
+                        </div>
                         {shouldShowToggle && (
                           <button
                             className="summary-toggle"
