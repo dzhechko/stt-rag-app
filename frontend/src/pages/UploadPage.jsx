@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, File, X, CheckCircle, AlertCircle } from 'lucide-react'
 import { uploadFile, getTranscriptJobs } from '../api/client'
@@ -43,6 +43,28 @@ function UploadPage() {
   const removeFile = (id) => {
     setFiles(prev => prev.filter(f => f.id !== id))
   }
+
+  // Calculate progress for a file item - ensures recalculation when fileProgress changes
+  const calculateFileProgress = useCallback((fileItem) => {
+    const uploadProgress = fileItem.uploadProgress ?? 0
+    const currentFileProgress = fileItem.transcriptId ? fileProgress[fileItem.transcriptId] : undefined
+    const transcriptionProgress = fileItem.transcriptId
+      ? (currentFileProgress !== undefined ? currentFileProgress : 0)
+      : 0
+    // If transcriptId exists, upload is complete, so use: 0.4 + 0.6 * transcriptionProgress
+    // Otherwise, use upload progress only
+    const combined = fileItem.transcriptId
+      ? 0.4 + 0.6 * transcriptionProgress
+      : uploadProgress
+    
+    // Detailed debug logging to see actual fileProgress value at render time
+    console.log(`[Progress Debug Render] File: ${fileItem.file.name}, transcriptId: ${fileItem.transcriptId}`)
+    console.log(`[Progress Debug Render] fileProgress object:`, fileProgress)
+    console.log(`[Progress Debug Render] fileProgress[${fileItem.transcriptId}]:`, currentFileProgress)
+    console.log(`[Progress Debug Render] uploadProgress: ${uploadProgress}, transcriptionProgress: ${transcriptionProgress}, combined: ${combined}`)
+    
+    return { uploadProgress, transcriptionProgress, combined }
+  }, [fileProgress])
 
   const pollTranscriptionProgress = async (transcriptId) => {
     console.log(`[Polling] Starting poll for transcriptId: ${transcriptId}`)
@@ -291,44 +313,27 @@ function UploadPage() {
                 {fileItem.status === 'uploading' && !fileItem.transcriptId && (
                   <span className="status uploading">Загрузка...</span>
                 )}
-                {(fileItem.status === 'uploading' || fileItem.status === 'processing') && (
-                  <div className="transcription-status">
-                    <div className="progress-container">
-                      <div className="progress-bar">
-                        {(() => {
-                          const uploadProgress = fileItem.uploadProgress ?? 0
-                          const transcriptionProgress = fileItem.transcriptId
-                            ? (fileProgress[fileItem.transcriptId] || 0)
-                            : 0
-                          // If transcriptId exists, upload is complete, so use: 0.4 + 0.6 * transcriptionProgress
-                          // Otherwise, use upload progress only
-                          const combined = fileItem.transcriptId
-                            ? 0.4 + 0.6 * transcriptionProgress
-                            : uploadProgress
-                          // Debug logging (temporary)
-                          console.log(`[Progress Debug] File: ${fileItem.file.name}, transcriptId: ${fileItem.transcriptId}, uploadProgress: ${uploadProgress}, transcriptionProgress: ${transcriptionProgress}, combined: ${combined}`)
-                          return (
-                            <div
-                              className="progress-fill"
-                              style={{ width: `${Math.round(combined * 100)}%` }}
-                            />
-                          )
-                        })()}
+                {(fileItem.status === 'uploading' || fileItem.status === 'processing') && (() => {
+                  const progressData = calculateFileProgress(fileItem)
+                  
+                  return (
+                    <div className="transcription-status">
+                      <div className="progress-container">
+                        <div className="progress-bar">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${Math.round(progressData.combined * 100)}%` }}
+                          />
+                        </div>
+                        <span className="progress-text">
+                          {fileItem.transcriptId
+                            ? `Транскрибация... ${Math.round(progressData.combined * 100)}%`
+                            : `Загрузка файла... ${Math.round(progressData.uploadProgress * 100)}%`}
+                        </span>
                       </div>
-                      <span className="progress-text">
-                        {fileItem.transcriptId
-                          ? `Транскрибация... ${Math.round(
-                              (
-                                0.4 + 0.6 * (fileProgress[fileItem.transcriptId] || 0)
-                              ) * 100
-                            )}%`
-                          : `Загрузка файла... ${Math.round(
-                              (fileItem.uploadProgress ?? 0) * 100
-                            )}%`}
-                      </span>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
                 {fileItem.status === 'completed' && fileItem.transcriptId && fileProgress[fileItem.transcriptId] !== undefined && fileProgress[fileItem.transcriptId] >= 1.0 && (
                   <span className="status completed">
                     <CheckCircle size={16} /> Завершено

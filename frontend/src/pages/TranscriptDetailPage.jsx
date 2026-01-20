@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Download, FileText, Clock, Globe, Edit, FileCheck, Plus, RefreshCw, CheckCircle, XCircle, Languages, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -33,6 +33,96 @@ function CopyButton({ text, label = "Копировать" }) {
   )
 }
 
+// Estimate translation time based on text length and model
+function estimateTranslationTime(textLength, model) {
+  // Base speeds in characters per second (conservative estimates)
+  let minSpeed, maxSpeed
+  
+  switch (model) {
+    case 'GigaChat/GigaChat-2-Max':
+      // Slowest, highest quality
+      minSpeed = 500
+      maxSpeed = 800
+      break
+    case 'GigaChat/GigaChat-2':
+      // Medium speed, good quality
+      minSpeed = 1000
+      maxSpeed = 1500
+      break
+    case 'Qwen/Qwen3-235B-A22B-Instruct-2507':
+      // Fastest, recommended for large texts
+      minSpeed = 2000
+      maxSpeed = 3000
+      break
+    default:
+      // Default to medium speed
+      minSpeed = 1000
+      maxSpeed = 1500
+  }
+  
+  // Calculate time in seconds
+  const minSeconds = Math.ceil(textLength / maxSpeed)
+  const maxSeconds = Math.ceil(textLength / minSpeed)
+  
+  // Format as human-readable string
+  const formatDuration = (seconds) => {
+    if (seconds < 60) {
+      return `${seconds} сек`
+    } else if (seconds < 3600) {
+      const mins = Math.floor(seconds / 60)
+      const secs = seconds % 60
+      if (secs === 0) {
+        return `${mins} ${mins === 1 ? 'мин' : 'мин'}`
+      }
+      return `${mins} ${mins === 1 ? 'мин' : 'мин'} ${secs} сек`
+    } else {
+      const hours = Math.floor(seconds / 3600)
+      const mins = Math.floor((seconds % 3600) / 60)
+      if (mins === 0) {
+        return `${hours} ${hours === 1 ? 'час' : 'часа'}`
+      }
+      return `${hours} ${hours === 1 ? 'час' : 'часа'} ${mins} ${mins === 1 ? 'мин' : 'мин'}`
+    }
+  }
+  
+  // If range is small, show single value
+  if (maxSeconds - minSeconds <= 10) {
+    const avgSeconds = Math.ceil((minSeconds + maxSeconds) / 2)
+    return {
+      minSeconds: avgSeconds,
+      maxSeconds: avgSeconds,
+      formatted: `~${formatDuration(avgSeconds)}`
+    }
+  }
+  
+  return {
+    minSeconds,
+    maxSeconds,
+    formatted: `~${formatDuration(minSeconds)}–${formatDuration(maxSeconds)}`
+  }
+}
+
+// Format duration in seconds to human-readable string
+function formatDuration(seconds) {
+  if (seconds < 60) {
+    return `${Math.round(seconds)} сек`
+  } else if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.round(seconds % 60)
+    if (secs === 0) {
+      return `${mins} ${mins === 1 ? 'мин' : 'мин'}`
+    }
+    return `${mins} ${mins === 1 ? 'мин' : 'мин'} ${secs} сек`
+  } else {
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    if (mins === 0) {
+      return `${hours} ${hours === 1 ? 'час' : 'часа'}`
+    }
+    return `${hours} ${hours === 1 ? 'час' : 'часа'} ${mins} ${mins === 1 ? 'мин' : 'мин'}`
+  }
+}
+
 function TranscriptDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -48,6 +138,8 @@ function TranscriptDetailPage() {
   const [viewLanguage, setViewLanguage] = useState('current') // 'current', 'original', 'ru'
   const [translating, setTranslating] = useState(false)
   const [translationModel, setTranslationModel] = useState('GigaChat/GigaChat-2-Max') // Модель для перевода
+  const [translationStartTime, setTranslationStartTime] = useState(null) // Timestamp when translation started
+  const [currentTime, setCurrentTime] = useState(Date.now()) // Current time for updating elapsed time display
   const [visibleSummaries, setVisibleSummaries] = useState(new Set()) // ID видимых summaries
   const [expandedSummaries, setExpandedSummaries] = useState(new Set()) // ID развернутых summaries (preview/full)
 
@@ -59,6 +151,21 @@ function TranscriptDetailPage() {
       loadIndexStatus()
     }
   }, [id])
+
+  // Effect to update elapsed time every second during translation
+  useEffect(() => {
+    if (!translationStartTime || !translating) {
+      setCurrentTime(Date.now())
+      return
+    }
+    
+    // Update current time every second to trigger re-render and update elapsed time display
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now())
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [translationStartTime, translating])
 
   // Separate effect for polling during active operations
   useEffect(() => {
@@ -83,9 +190,11 @@ function TranscriptDetailPage() {
             // Translation completed - reload transcript and stop translating state
             await loadTranscript()
             setTranslating(false)
+            setTranslationStartTime(null) // Reset start time
           } else if (translationJob.status === 'failed') {
             // Translation failed - show error and stop translating state
             setTranslating(false)
+            setTranslationStartTime(null) // Reset start time
             if (translationJob.error_message) {
               alert(`Ошибка при переводе: ${translationJob.error_message}`)
             }
@@ -189,6 +298,8 @@ function TranscriptDetailPage() {
   const handleTranslate = async (targetLanguage = 'ru') => {
     if (!id || translating) return
     setTranslating(true)
+    // Record start time for ETA calculation
+    setTranslationStartTime(Date.now())
     try {
       // Start translation (this will create a job on backend and return immediately)
       const result = await translateTranscript(id, targetLanguage, translationModel)
@@ -196,6 +307,7 @@ function TranscriptDetailPage() {
       if (result.already_translated) {
         alert(result.message)
         setTranslating(false)
+        setTranslationStartTime(null)
         return
       }
       
@@ -213,6 +325,7 @@ function TranscriptDetailPage() {
       console.error('Error translating transcript:', error)
       alert(`Ошибка при переводе транскрипта: ${error.response?.data?.detail || error.message}`)
       setTranslating(false)
+      setTranslationStartTime(null)
     }
   }
 
@@ -477,51 +590,68 @@ function TranscriptDetailPage() {
             </div>
           </div>
 
-          {(translationJob || translating) && (translationJob?.status === 'processing' || translationJob?.status === 'queued' || (!translationJob && translating)) && (
-            <div className="translation-progress">
-              <div className="progress-container">
-                {(() => {
-                  const progress = translationJob?.progress ?? 0
-                  const hasDeterminateProgress = progress > 0 && progress < 1
-                  
-                  // Временный лог для отладки динамики прогресса перевода
-                  console.debug('Translation progress UI:', {
-                    progress,
-                    status: translationJob?.status,
-                    hasDeterminateProgress,
-                  })
-                  
-                  if (hasDeterminateProgress) {
-                    return (
-                      <>
-                        <div className="progress-bar">
-                          <div
-                            className="progress-fill"
-                            style={{ width: `${Math.round(progress * 100)}%` }}
-                          />
-                        </div>
+          {(translationJob || translating) && (translationJob?.status === 'processing' || translationJob?.status === 'queued' || (!translationJob && translating)) && (() => {
+            const progress = translationJob?.progress ?? 0
+            const hasDeterminateProgress = progress > 0 && progress < 1
+            
+            // Calculate elapsed time and ETA
+            let elapsedSeconds = 0
+            let remainingSeconds = null
+            if (translationStartTime) {
+              elapsedSeconds = (currentTime - translationStartTime) / 1000
+              if (hasDeterminateProgress && progress >= 0.05) {
+                // Only show ETA if we have meaningful progress (>= 5%)
+                const estimatedTotalSeconds = elapsedSeconds / progress
+                remainingSeconds = Math.max(0, estimatedTotalSeconds - elapsedSeconds)
+              }
+            }
+            
+            return (
+              <div className="translation-progress">
+                <div className="progress-container">
+                  {hasDeterminateProgress ? (
+                    <>
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${Math.round(progress * 100)}%` }}
+                        />
+                      </div>
+                      <div className="progress-info">
                         <span className="progress-text">
                           Перевод в процессе... {Math.round(progress * 100)}%
                         </span>
-                      </>
-                    )
-                  }
-                  
-                  // Индетерминатный режим, когда прогресс не меняется или неизвестен
-                  return (
+                        {translationStartTime && (
+                          <div className="progress-time-info">
+                            <span>Прошло: {formatDuration(elapsedSeconds)}</span>
+                            {remainingSeconds !== null && (
+                              <span>Осталось: ~{formatDuration(remainingSeconds)}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
                     <>
                       <div className="progress-bar indeterminate">
                         <div className="progress-fill" />
                       </div>
-                      <span className="progress-text">
-                        Перевод в процессе...
-                      </span>
+                      <div className="progress-info">
+                        <span className="progress-text">
+                          Перевод в процессе...
+                        </span>
+                        {translationStartTime && (
+                          <div className="progress-time-info">
+                            <span>Прошло: {formatDuration(elapsedSeconds)}</span>
+                          </div>
+                        )}
+                      </div>
                     </>
-                  )
-                })()}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
           {translationJob && translationJob.status === 'failed' && (
             <div className="translation-error">
               <p className="error-message">
@@ -529,36 +659,48 @@ function TranscriptDetailPage() {
               </p>
             </div>
           )}
-          {!isTranslated && transcript.language?.toLowerCase() !== 'ru' && !translationJob && !translating && (
-            <div className="translation-actions">
-              <p className="translation-hint">
-                {transcript.language?.toLowerCase() === 'en' 
-                  ? "Этот транскрипт на английском языке. Хотите перевести его на русский?"
-                  : "Хотите перевести этот транскрипт на русский?"}
-              </p>
-              <div className="translation-model-selector">
-                <label htmlFor="translation-model">Модель для перевода:</label>
-                <select
-                  id="translation-model"
-                  value={translationModel}
-                  onChange={(e) => setTranslationModel(e.target.value)}
-                  className="model-select"
+          {!isTranslated && transcript.language?.toLowerCase() !== 'ru' && !translationJob && !translating && (() => {
+            // Calculate estimated translation time
+            const textLength = transcript.transcription_text?.length || 0
+            const timeEstimate = estimateTranslationTime(textLength, translationModel)
+            
+            return (
+              <div className="translation-actions">
+                <p className="translation-hint">
+                  {transcript.language?.toLowerCase() === 'en' 
+                    ? "Этот транскрипт на английском языке. Хотите перевести его на русский?"
+                    : "Хотите перевести этот транскрипт на русский?"}
+                </p>
+                <div className="translation-model-selector">
+                  <label htmlFor="translation-model">Модель для перевода:</label>
+                  <select
+                    id="translation-model"
+                    value={translationModel}
+                    onChange={(e) => setTranslationModel(e.target.value)}
+                    className="model-select"
+                  >
+                    <option value="GigaChat/GigaChat-2-Max">GigaChat-2-Max — Медленный, высокое качество</option>
+                    <option value="GigaChat/GigaChat-2">GigaChat-2 — Быстрее, хорошее качество</option>
+                    <option value="Qwen/Qwen3-235B-A22B-Instruct-2507">Qwen3 — Быстрый, рекомендуется для больших текстов</option>
+                  </select>
+                </div>
+                {textLength > 0 && (
+                  <div className="translation-time-estimate">
+                    <Clock size={14} />
+                    <span>Примерное время перевода для выбранной модели: <strong>{timeEstimate.formatted}</strong></span>
+                  </div>
+                )}
+                <button
+                  className="btn-translate"
+                  onClick={() => handleTranslate('ru')}
+                  disabled={translating}
                 >
-                  <option value="GigaChat/GigaChat-2-Max">GigaChat-2-Max — Медленный, высокое качество</option>
-                  <option value="GigaChat/GigaChat-2">GigaChat-2 — Быстрее, хорошее качество</option>
-                  <option value="Qwen/Qwen3-235B-A22B-Instruct-2507">Qwen3 — Быстрый, рекомендуется для больших текстов</option>
-                </select>
+                  <Languages size={16} />
+                  {translating ? 'Перевод...' : 'Перевести на русский'}
+                </button>
               </div>
-              <button
-                className="btn-translate"
-                onClick={() => handleTranslate('ru')}
-                disabled={translating}
-              >
-                <Languages size={16} />
-                {translating ? 'Перевод...' : 'Перевести на русский'}
-              </button>
-            </div>
-          )}
+            )
+          })()}
         </div>
       )}
 

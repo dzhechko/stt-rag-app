@@ -311,10 +311,30 @@
   animation: translation-indeterminate 1.2s infinite;
 }
 
+.translation-progress .progress-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .translation-progress .progress-text {
-  margin-left: 12px;
   font-size: 0.9rem;
   color: #374151;
+  font-weight: 500;
+}
+
+.translation-progress .progress-time-info {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.translation-progress .progress-time-info span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 @keyframes translation-indeterminate {
@@ -682,6 +702,29 @@
   outline: none;
   border-color: #10b981;
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.translation-time-estimate {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #f0fdf4;
+  border: 1px solid #10b981;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.translation-time-estimate svg {
+  color: #10b981;
+  flex-shrink: 0;
+}
+
+.translation-time-estimate strong {
+  color: #059669;
+  font-weight: 600;
 }
 
 .btn-translate {
