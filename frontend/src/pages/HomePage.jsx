@@ -19,7 +19,7 @@ function HomePage() {
         </p>
         <div className="hero-buttons">
           <Link to="/transcripts" className="btn-hero btn-hero-primary">
-            <span>ИССЛЕДОВАТЬ ИНТЕРФЕЙС</span>
+            <span>ПЕРЕЙТИ К ТРАНСКРИПТАМ ВСТРЕЧ</span>
             <ArrowRight size={20} />
           </Link>
           <Link to="/rag" className="btn-hero btn-hero-secondary">
