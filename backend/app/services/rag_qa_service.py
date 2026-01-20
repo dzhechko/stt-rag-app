@@ -1,4 +1,5 @@
 import logging
+import sys
 import httpx
 import re
 from typing import List, Dict, Any, Optional
@@ -307,12 +308,14 @@ class RAGQAService:
         # Simple heuristic: check if answer is not empty and has reasonable length
         if not answer or len(answer) < 10:
             logger.info("Quality evaluation: answer too short or empty, returning score 1.0")
+            sys.stdout.flush()
             return 1.0
         
         base_score = 2.0
         answer_len = len(answer)
         chunks_used = len(retrieved_chunks)
         logger.info(f"Quality evaluation started: answer_len={answer_len}, chunks_used={chunks_used}/{top_k}, use_reranking={use_reranking}, use_hybrid_search={use_hybrid_search}, base_score={base_score:.2f}")
+        sys.stdout.flush()
         
         # Check if answer references the context (more sophisticated check)
         chunk_texts = " ".join([chunk.get("chunk_text", "") for chunk in retrieved_chunks])
@@ -369,19 +372,38 @@ class RAGQAService:
             relevance_factor = min(1.0, (avg_chunk_score - 0.4) / 0.3)  # 0.4-0.7 maps to 0-1
             chunk_factor = min(1.0, (chunks_used / top_k - 1) / 1.0)  # 1x-2x chunks maps to 0-1
             length_penalty_reduction = min(0.3, relevance_factor * chunk_factor * 0.3)
-        # Case 2: Reranking with high quality chunks (even if chunks_used == top_k)
+        # Case 2: Both reranking and hybrid search with high quality chunks (highest priority)
+        elif use_reranking and use_hybrid_search and avg_chunk_score > 0.4:
+            # Both advanced settings: maximum reduction for detailed, comprehensive answers
+            relevance_factor = min(1.0, (avg_chunk_score - 0.4) / 0.3)  # 0.4-0.7 maps to 0-1
+            # Use chunk usage ratio, but don't require chunks_used > top_k
+            # If using most chunks (>= 80%), treat as full usage
+            if chunks_used >= top_k * 0.8:
+                chunk_factor = 1.0
+            else:
+                chunk_factor = min(1.0, chunks_used / max(top_k, 1))  # 0.5-1.0 maps to 0-1
+            length_penalty_reduction = min(0.5, relevance_factor * chunk_factor * 0.5)
+        # Case 3: Reranking with high quality chunks (even if chunks_used == top_k)
         elif use_reranking and avg_chunk_score > 0.4:
             # Reranking selects best chunks, so high avg_chunk_score justifies longer answer
             relevance_factor = min(1.0, (avg_chunk_score - 0.4) / 0.3)  # 0.4-0.7 maps to 0-1
             # Use chunk usage ratio, but don't require chunks_used > top_k
-            chunk_factor = min(1.0, chunks_used / max(top_k, 1))  # 0.5-1.0 maps to 0-1
-            length_penalty_reduction = min(0.3, relevance_factor * chunk_factor * 0.3)
-        # Case 3: Hybrid search with high quality chunks
+            # If using most chunks (>= 80%), treat as full usage
+            if chunks_used >= top_k * 0.8:
+                chunk_factor = 1.0
+            else:
+                chunk_factor = min(1.0, chunks_used / max(top_k, 1))  # 0.5-1.0 maps to 0-1
+            length_penalty_reduction = min(0.4, relevance_factor * chunk_factor * 0.4)
+        # Case 4: Hybrid search with high quality chunks
         elif use_hybrid_search and avg_chunk_score > 0.4:
             # Hybrid search provides better coverage, high avg_chunk_score justifies longer answer
             relevance_factor = min(1.0, (avg_chunk_score - 0.4) / 0.3)  # 0.4-0.7 maps to 0-1
-            chunk_factor = min(1.0, chunks_used / max(top_k, 1))  # 0.5-1.0 maps to 0-1
-            length_penalty_reduction = min(0.25, relevance_factor * chunk_factor * 0.25)
+            # If using most chunks (>= 80%), treat as full usage
+            if chunks_used >= top_k * 0.8:
+                chunk_factor = 1.0
+            else:
+                chunk_factor = min(1.0, chunks_used / max(top_k, 1))  # 0.5-1.0 maps to 0-1
+            length_penalty_reduction = min(0.35, relevance_factor * chunk_factor * 0.35)
         
         if length_penalty_reduction > 0:
             logger.info(f"Quality evaluation: length_penalty_reduction={length_penalty_reduction:.2f} (chunks_used={chunks_used}, top_k={top_k}, avg_chunk_score={avg_chunk_score:.3f}, reranking={use_reranking}, hybrid={use_hybrid_search})")
@@ -400,17 +422,17 @@ class RAGQAService:
             # Getting long, but apply penalty reduction if using many relevant chunks or advanced settings
             # Base value increases with advanced settings (detailed answers are expected)
             if use_reranking and use_hybrid_search:
-                base_long_value = 0.8  # Both settings: very detailed answers are good
+                base_long_value = 0.95  # Both settings: very detailed answers are excellent (increased from 0.8)
             elif use_reranking or use_hybrid_search:
-                base_long_value = 0.7  # One setting: detailed answers are good
+                base_long_value = 0.8  # One setting: detailed answers are good (increased from 0.7)
             else:
                 base_long_value = 0.5  # No advanced settings: standard penalty
             
             # Adjust base value based on chunk quality
             if avg_chunk_score > 0.6:
-                base_long_value += 0.1  # High quality chunks justify longer answer
+                base_long_value += 0.15  # High quality chunks justify longer answer (increased from 0.1)
             elif avg_chunk_score > 0.5:
-                base_long_value += 0.05  # Good quality chunks
+                base_long_value += 0.08  # Good quality chunks (increased from 0.05)
             
             length_penalty = (answer_len - optimal_max) / 700 * 0.2
             adjusted_penalty = max(0.0, length_penalty - length_penalty_reduction)
@@ -420,17 +442,17 @@ class RAGQAService:
             # Very long, but still apply penalty reduction if highly relevant or using advanced settings
             # Base value increases with advanced settings
             if use_reranking and use_hybrid_search:
-                base_very_long_value = 0.4  # Both settings: very long but detailed answers can be good
+                base_very_long_value = 0.55  # Both settings: very long but detailed answers can be good (increased from 0.4)
             elif use_reranking or use_hybrid_search:
-                base_very_long_value = 0.3  # One setting: long detailed answers can be acceptable
+                base_very_long_value = 0.4  # One setting: long detailed answers can be acceptable (increased from 0.3)
             else:
                 base_very_long_value = 0.2  # No advanced settings: standard penalty
             
             # Adjust base value based on chunk quality
             if avg_chunk_score > 0.6:
-                base_very_long_value += 0.1  # High quality chunks justify very long answer
+                base_very_long_value += 0.15  # High quality chunks justify very long answer (increased from 0.1)
             elif avg_chunk_score > 0.5:
-                base_very_long_value += 0.05  # Good quality chunks
+                base_very_long_value += 0.08  # Good quality chunks (increased from 0.05)
             
             base_penalty = 0.2 + min(0.2, (answer_len - (optimal_max + 700)) / 2000)
             adjusted_penalty = max(0.0, base_penalty - length_penalty_reduction)
@@ -498,7 +520,16 @@ class RAGQAService:
             elif avg_score > 0.3:
                 relevance_boost = 0.1  # Medium relevance
             elif avg_score < low_threshold:
-                relevance_boost = -0.2  # Low relevance
+                # For hybrid search, don't penalize if score is still above 0.3
+                # Hybrid search combines different scoring systems, so scores may be lower but still relevant
+                if use_hybrid_search and avg_score > 0.3:
+                    relevance_boost = 0.0  # No penalty for hybrid search with medium scores
+                else:
+                    relevance_boost = -0.2  # Low relevance
+            # Additional boost for hybrid search with medium scores (0.3-0.6)
+            if use_hybrid_search and 0.3 <= avg_score <= 0.6:
+                hybrid_relevance_boost = 0.15  # Boost for hybrid search with medium scores
+                relevance_boost += hybrid_relevance_boost
             base_score += relevance_boost
             logger.info(f"Quality evaluation: avg_chunk_score={avg_score:.3f} (thresholds: high={high_threshold}, medium={medium_threshold}, low={low_threshold}), relevance_boost={relevance_boost:.2f}, base_score={base_score:.2f}")
             
@@ -511,6 +542,7 @@ class RAGQAService:
         
         # Log base_score BEFORE normalization to see real differences
         logger.info(f"Quality evaluation: base_score before normalization={base_score:.2f}")
+        sys.stdout.flush()
         
         # Normalize to 0-5 range
         final_score = min(5.0, max(0.0, base_score))
@@ -518,12 +550,14 @@ class RAGQAService:
         # Log if score was clipped
         if base_score > 5.0:
             logger.warning(f"Quality evaluation: base_score ({base_score:.2f}) exceeded maximum (5.0), clipped to {final_score:.2f}")
+            sys.stdout.flush()
         
         logger.info(
             f"Quality evaluation completed: length={answer_len}, chunks={chunks_used}/{top_k}, "
             f"context_overlap={context_overlap:.2f}, reranking={use_reranking}, "
             f"hybrid={use_hybrid_search}, base_score={base_score:.2f}, final_score={final_score:.2f}"
         )
+        sys.stdout.flush()
         return final_score
     
     def _init_reranker(self, model_name: str):

@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: stt-postgres
+    environment:
+      POSTGRES_USER: stt_user
+      POSTGRES_PASSWORD: stt_password
+      POSTGRES_DB: stt_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stt_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stt-backend
+    environment:
+      DATABASE_URL: postgresql://stt_user:stt_password@postgres:5432/stt_db
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_BASE_URL: ${EVOLUTION_BASE_URL:-https://foundation-models.api.internal.cloud.ru/v1}
+      EVOLUTION_KEY_ID: ${EVOLUTION_KEY_ID}
+      EVOLUTION_SECRET: ${EVOLUTION_SECRET}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      UPLOAD_DIR: /app/volumes/audio
+      TRANSCRIPTS_DIR: /app/volumes/transcripts
+      LOGS_DIR: /app/volumes/logs
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-25}
+      KEEP_ORIGINAL_FILES: ${KEEP_ORIGINAL_FILES:-false}
+      CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+    volumes:
+      - ./volumes/audio:/app/volumes/audio
+      - ./volumes/transcripts:/app/volumes/transcripts
+      - ./volumes/logs:/app/volumes/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: stt-frontend
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: stt-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:
+

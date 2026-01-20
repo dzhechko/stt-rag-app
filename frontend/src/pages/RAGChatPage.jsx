@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, MessageSquare, History, X, Plus, ChevronDown, ChevronUp, FileText, ThumbsUp, ThumbsDown, Settings } from 'lucide-react'
+import { ArrowLeft, Send, MessageSquare, History, X, Plus, ChevronDown, ChevronUp, FileText, ThumbsUp, ThumbsDown, Settings, Copy, Check } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getTranscripts, getRAGSessions, createRAGSession, deleteRAGSession } from '../api/client'
@@ -11,17 +11,36 @@ function ChunksDisplay({ chunks }) {
   const [expanded, setExpanded] = useState(false)
   
   if (!chunks || chunks.length === 0) return null
+
+  const formatChunksAsMarkdown = () => {
+    let markdown = '## Sources\n\n'
+    chunks.forEach((chunk, idx) => {
+      markdown += `### Source ${idx + 1}\n\n`
+      if (chunk.score) {
+        markdown += `**Relevance:** ${(chunk.score * 100).toFixed(1)}%\n\n`
+      }
+      if (chunk.transcript_id) {
+        markdown += `**Transcript:** ${chunk.transcript_id}\n\n`
+      }
+      markdown += `${chunk.chunk_text || chunk.text || 'No text available'}\n\n`
+      markdown += '---\n\n'
+    })
+    return markdown.trim()
+  }
   
   return (
     <div className="chunks-display">
-      <button 
-        className="chunks-toggle"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <FileText size={14} />
-        <span>{chunks.length} source{chunks.length > 1 ? 's' : ''} used</span>
-        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
+      <div className="chunks-header">
+        <button 
+          className="chunks-toggle"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <FileText size={14} />
+          <span>{chunks.length} source{chunks.length > 1 ? 's' : ''} used</span>
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+        <CopyButton text={formatChunksAsMarkdown()} label="Copy sources" />
+      </div>
       {expanded && (
         <div className="chunks-list">
           {chunks.map((chunk, idx) => (
@@ -41,6 +60,32 @@ function ChunksDisplay({ chunks }) {
         </div>
       )}
     </div>
+  )
+}
+
+function CopyButton({ text, label = "Copy" }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy:', error)
+      alert('Failed to copy to clipboard')
+    }
+  }
+
+  return (
+    <button
+      className="copy-button"
+      onClick={handleCopy}
+      title={copied ? "Copied!" : label}
+    >
+      {copied ? <Check size={16} /> : <Copy size={16} />}
+      <span>{copied ? "Copied" : label}</span>
+    </button>
   )
 }
 
@@ -496,7 +541,10 @@ function RAGChatPage() {
                   )}
                       {msg.type === 'answer' && (
                         <div className="message-content">
-                          <strong>Assistant:</strong>
+                          <div className="message-header">
+                            <strong>Assistant:</strong>
+                            <CopyButton text={msg.content} label="Copy answer" />
+                          </div>
                           <div className="markdown-content">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                               {msg.content}

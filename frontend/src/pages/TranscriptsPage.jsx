@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText, Clock, Globe, Trash2, Eye } from 'lucide-react'
+import { FileText, Clock, Globe, Trash2, Eye, ChevronDown, ChevronUp } from 'lucide-react'
 import { getTranscripts, deleteTranscript } from '../api/client'
 import './TranscriptsPage.css'
 
@@ -8,6 +8,8 @@ function TranscriptsPage() {
   const [transcripts, setTranscripts] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState({ status: '', language: '' })
+  const [expandedTranscripts, setExpandedTranscripts] = useState(new Set())
+  const [transcriptViewMode, setTranscriptViewMode] = useState({}) // { transcriptId: 'text' | 'json' | 'srt' }
 
   useEffect(() => {
     loadTranscripts()
@@ -60,6 +62,32 @@ function TranscriptsPage() {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
     return (bytes / 1024 / 1024).toFixed(2) + ' MB'
+  }
+
+  const toggleTranscript = (id) => {
+    setExpandedTranscripts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) {
+        newSet.delete(id)
+      } else {
+        newSet.add(id)
+      }
+      return newSet
+    })
+  }
+
+  const getTranscriptContent = (transcript) => {
+    const viewMode = transcriptViewMode[transcript.id] || 'text'
+    switch (viewMode) {
+      case 'json':
+        return transcript.transcription_json 
+          ? JSON.stringify(transcript.transcription_json, null, 2)
+          : 'No JSON data available'
+      case 'srt':
+        return transcript.transcription_srt || 'No SRT data available'
+      default:
+        return transcript.transcription_text || 'No text available'
+    }
   }
 
   if (loading) {
@@ -137,7 +165,56 @@ function TranscriptsPage() {
 
               {transcript.transcription_text && (
                 <div className="card-preview">
-                  <p>{transcript.transcription_text.substring(0, 150)}...</p>
+                  <button
+                    className="transcript-toggle"
+                    onClick={() => toggleTranscript(transcript.id)}
+                  >
+                    {expandedTranscripts.has(transcript.id) ? (
+                      <>
+                        <ChevronUp size={16} />
+                        <span>Hide transcript</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown size={16} />
+                        <span>Show transcript</span>
+                      </>
+                    )}
+                  </button>
+                  {expandedTranscripts.has(transcript.id) && (
+                    <div className="transcript-expanded">
+                      <div className="transcript-view-tabs">
+                        <button
+                          className={transcriptViewMode[transcript.id] === 'text' || !transcriptViewMode[transcript.id] ? 'active' : ''}
+                          onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'text' })}
+                        >
+                          Text
+                        </button>
+                        {transcript.transcription_json && (
+                          <button
+                            className={transcriptViewMode[transcript.id] === 'json' ? 'active' : ''}
+                            onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'json' })}
+                          >
+                            JSON
+                          </button>
+                        )}
+                        {transcript.transcription_srt && (
+                          <button
+                            className={transcriptViewMode[transcript.id] === 'srt' ? 'active' : ''}
+                            onClick={() => setTranscriptViewMode({ ...transcriptViewMode, [transcript.id]: 'srt' })}
+                          >
+                            SRT
+                          </button>
+                        )}
+                      </div>
+                      <div className="transcript-content">
+                        <pre>{getTranscriptContent(transcript)}</pre>
+                      </div>
+                    </div>
+                  )}
+                  {!expandedTranscripts.has(transcript.id) && (
+                    <p className="transcript-preview">{transcript.transcription_text.substring(0, 150)}...</p>
+                  )}
                 </div>
               )}
 
