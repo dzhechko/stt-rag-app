@@ -9,6 +9,7 @@ function UploadPage() {
   const [language, setLanguage] = useState('ru')
   const [uploading, setUploading] = useState(false)
   const [fileProgress, setFileProgress] = useState({}) // { transcriptId: progress }
+  const [jobStatuses, setJobStatuses] = useState({}) // { transcriptId: 'queued' | 'processing' | 'completed' | 'failed' }
   const navigate = useNavigate()
   const intervalsRef = useRef({})
   const pollingAttemptsRef = useRef({}) // { transcriptId: count } - track polling attempts for missing jobs
@@ -71,8 +72,11 @@ function UploadPage() {
         const progress = transcriptionJob.progress ?? 0
         const status = transcriptionJob.status
         
-        // ВАЖНО: Всегда обновляем прогресс для отображения динамики
+        // ВАЖНО: Всегда обновляем прогресс и статус для отображения динамики
         console.log(`[Progress] ${transcriptId.slice(0,8)}: ${Math.round(progress * 100)}% (${status})`)
+        
+        // Update job status
+        setJobStatuses(prev => ({ ...prev, [transcriptId]: status }))
         
         setFileProgress(prev => {
           // Только обновляем если прогресс изменился
@@ -150,44 +154,60 @@ function UploadPage() {
     return false
   }
 
-  // Poll progress for files that are being transcribed
+  // Start polling for a specific transcriptId
+  const startPollingForTranscript = useCallback((transcriptId) => {
+    // Не создавать дублирующие интервалы
+    if (intervalsRef.current[transcriptId]) {
+      console.log(`[Polling] Already polling: ${transcriptId.slice(0,8)}`)
+      return
+    }
+    
+    console.log(`[Polling] Starting for: ${transcriptId.slice(0,8)}`)
+    intervalsRef.current[transcriptId] = true // Mark as starting
+    
+    // First poll immediately
+    pollTranscriptionProgress(transcriptId).then(shouldStop => {
+      if (shouldStop) {
+        console.log(`[Polling] Job done on first poll: ${transcriptId.slice(0,8)}`)
+        delete intervalsRef.current[transcriptId]
+        return
+      }
+      
+      // Start polling interval
+      const interval = setInterval(async () => {
+        const stop = await pollTranscriptionProgress(transcriptId)
+        if (stop) {
+          console.log(`[Polling] Stopping interval: ${transcriptId.slice(0,8)}`)
+          clearInterval(interval)
+          delete intervalsRef.current[transcriptId]
+        }
+      }, 1000)
+      
+      intervalsRef.current[transcriptId] = interval
+    })
+  }, [])
+
+  // Watch for files that need polling - DON'T clear intervals on files change!
   useEffect(() => {
     files.forEach(fileItem => {
-      // Poll for files that have transcriptId and are in uploading/processing/completed status
-      if (fileItem.transcriptId && (fileItem.status === 'uploading' || fileItem.status === 'processing' || fileItem.status === 'completed')) {
-        // Не создавать дублирующие интервалы для одного transcriptId
-        if (!intervalsRef.current[fileItem.transcriptId]) {
-          console.log(`[Polling] Starting polling interval for transcriptId: ${fileItem.transcriptId}`)
-          // First poll immediately (for fast transcriptions and to get initial progress)
-          pollTranscriptionProgress(fileItem.transcriptId).then(shouldStop => {
-            if (shouldStop) {
-              console.log(`[Polling] Stopping polling for ${fileItem.transcriptId} - job completed/failed`)
-              return
-            }
-            
-            // Then start polling interval for this file
-            const interval = setInterval(async () => {
-              const stop = await pollTranscriptionProgress(fileItem.transcriptId)
-              if (stop) {
-                console.log(`[Polling] Clearing interval for ${fileItem.transcriptId}`)
-                clearInterval(interval)
-                delete intervalsRef.current[fileItem.transcriptId]
-              }
-            }, 1000) // Poll every 1 second for better responsiveness
-            intervalsRef.current[fileItem.transcriptId] = interval
-            console.log(`[Polling] Polling interval started for ${fileItem.transcriptId}`)
-          })
-        } else {
-          console.log(`[Polling] Polling already active for transcriptId: ${fileItem.transcriptId}`)
-        }
+      if (fileItem.transcriptId && 
+          (fileItem.status === 'uploading' || fileItem.status === 'processing')) {
+        startPollingForTranscript(fileItem.transcriptId)
       }
     })
+    // NO cleanup here - intervals manage themselves
+  }, [files, startPollingForTranscript])
 
+  // Cleanup ONLY on unmount
+  useEffect(() => {
     return () => {
-      Object.values(intervalsRef.current).forEach(interval => clearInterval(interval))
+      console.log('[Polling] Unmount - clearing all intervals')
+      Object.entries(intervalsRef.current).forEach(([id, interval]) => {
+        if (typeof interval !== 'boolean') clearInterval(interval)
+      })
       intervalsRef.current = {}
     }
-  }, [files])
+  }, [])
 
   const uploadFiles = async () => {
     if (files.length === 0) return
@@ -317,13 +337,14 @@ function UploadPage() {
                 {(fileItem.status === 'uploading' || fileItem.status === 'processing') && (() => {
                   const progressData = calculateFileProgress(fileItem)
                   // Определяем фазу по нескольким признакам для надёжности:
-                  // - status === 'processing' означает что загрузка завершена
-                  // - uploadProgress >= 1.0 означает что загрузка завершена
-                  // - transcriptId !== null означает что сервер вернул ID
                   const isUploadComplete = fileItem.uploadProgress >= 1.0 || fileItem.status === 'processing'
                   const hasTranscriptId = fileItem.transcriptId !== null
                   const isTranscribing = isUploadComplete || hasTranscriptId
                   const currentPhase = isTranscribing ? 'transcription' : 'upload'
+                  
+                  // Получаем статус задачи с backend
+                  const jobStatus = hasTranscriptId ? jobStatuses[fileItem.transcriptId] : null
+                  const isQueued = jobStatus === 'queued'
                   
                   // Рассчитываем прогресс транскрибации
                   const transcriptionProgress = hasTranscriptId && fileProgress[fileItem.transcriptId] !== undefined
@@ -337,7 +358,7 @@ function UploadPage() {
                     : progressData.uploadProgress * 0.4
                   
                   return (
-                    <div className="file-progress-phases" key={`${fileItem.id}-${currentPhase}`}>
+                    <div className="file-progress-phases" key={`${fileItem.id}-${currentPhase}-${jobStatus}`}>
                       {/* Индикатор текущей фазы */}
                       <div className="phase-indicator">
                         <span className={`phase ${currentPhase === 'upload' ? 'active' : 'completed'}`}>
@@ -345,21 +366,23 @@ function UploadPage() {
                         </span>
                         <span className="phase-arrow">→</span>
                         <span className={`phase ${currentPhase === 'transcription' ? 'active' : ''}`}>
-                          2. Транскрибация {isTranscribing && `${transcriptionPercent}%`}
+                          2. Транскрибация {isTranscribing && (isQueued ? '(ожидание)' : `${transcriptionPercent}%`)}
                         </span>
                       </div>
                       
                       {/* Прогресс-бар */}
                       <div className="progress-container">
-                        <div className="progress-bar">
+                        <div className={`progress-bar ${isQueued ? 'indeterminate' : ''}`}>
                           <div
-                            className="progress-fill"
-                            style={{ width: `${Math.round(combinedProgress * 100)}%` }}
+                            className={`progress-fill ${isQueued ? 'indeterminate' : ''}`}
+                            style={{ width: isQueued ? '100%' : `${Math.round(combinedProgress * 100)}%` }}
                           />
                         </div>
                         <span className="progress-text">
                           {isTranscribing
-                            ? `Транскрибация: ${transcriptionPercent}% (общий: ${Math.round(combinedProgress * 100)}%)`
+                            ? (isQueued 
+                                ? 'Ожидание начала...' 
+                                : `Транскрибация: ${transcriptionPercent}% (общий: ${Math.round(combinedProgress * 100)}%)`)
                             : `Загрузка: ${Math.round(progressData.uploadProgress * 100)}%`}
                         </span>
                       </div>

@@ -287,3 +287,25 @@
   font-size: 0.8rem;
 }
 
+/* Indeterminate progress bar animation (for queued status) */
+.progress-bar.indeterminate {
+  background: #e5e7eb;
+}
+
+.progress-fill.indeterminate {
+  width: 30% !important;
+  animation: indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(200%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
