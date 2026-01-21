@@ -989,8 +989,15 @@ async def reindex_transcript(
         progress=0.0
     )
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    print(f"[REINDEX] Creating indexing job for transcript {transcript_id}, job_type={JobType.INDEXING}, job_type.value={JobType.INDEXING.value}", flush=True)
+    try:
+        db.commit()
+        db.refresh(job)
+        print(f"[REINDEX] Indexing job created successfully: {job.id}", flush=True)
+    except Exception as e:
+        print(f"[REINDEX] Error creating indexing job: {str(e)}", flush=True)
+        db.rollback()
+        raise
     
     try:
         # Callback function for updating indexing progress
@@ -1059,10 +1066,10 @@ async def reindex_transcript(
 @app.post("/api/transcripts/{transcript_id}/translate")
 async def translate_transcript(
     transcript_id: UUID,
-    target_language: str = "ru",
-    model: Optional[str] = None,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    target_language: str = "ru",
+    model: Optional[str] = None
 ):
     """Manually translate a transcript to target language (async)"""
     transcript = db.query(Transcript).filter(Transcript.id == transcript_id).first()
@@ -1153,6 +1160,9 @@ async def process_translation(
         job.progress = 0.0
         db.commit()
         
+        # Track translation start time
+        translation_start_time = time.time()
+        
         # Callback function for updating translation progress
         def update_translation_progress(progress: float):
             """Callback for updating translation progress in database"""
@@ -1191,6 +1201,7 @@ async def process_translation(
                 transcript.extra_metadata = {}
             transcript.extra_metadata["original_english_text"] = text_to_translate
             transcript.extra_metadata["translated"] = True
+            transcript.extra_metadata["translation_duration_seconds"] = int(time.time() - translation_start_time)
             
             # Create translated JSON if original JSON exists
             if transcript.transcription_json:

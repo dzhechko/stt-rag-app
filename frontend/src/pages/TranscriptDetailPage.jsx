@@ -591,6 +591,11 @@ function TranscriptDetailPage() {
               <span className="translation-badge">
                 <CheckCircle size={14} />
                 Переведено
+                {transcript.extra_metadata?.translation_duration_seconds && (
+                  <span className="translation-time">
+                    за {formatDuration(transcript.extra_metadata.translation_duration_seconds)}
+                  </span>
+                )}
               </span>
             )}
           </div>

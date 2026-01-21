@@ -618,6 +618,12 @@
   font-weight: 500;
 }
 
+.translation-time {
+  margin-left: 8px;
+  font-weight: normal;
+  opacity: 0.8;
+}
+
 .language-switcher {
   margin-bottom: 1rem;
 }
