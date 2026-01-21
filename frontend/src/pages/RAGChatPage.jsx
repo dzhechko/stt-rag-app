@@ -263,7 +263,7 @@ function RAGChatPage() {
       setSessionName('')
       setShowSessionSelector(false)
       await loadSessions()
-      navigate(`/rag/chat/${newSession.id}`)
+      navigate(`/rag/sessions/${newSession.id}`)
     } catch (error) {
       console.error('Error creating session:', error)
     }
@@ -271,7 +271,7 @@ function RAGChatPage() {
 
   const handleSelectSession = (sid) => {
     setShowSessionSelector(false)
-    navigate(`/rag/chat/${sid}`)
+    navigate(`/rag/sessions/${sid}`)
     // Состояние обновится автоматически через useEffect при изменении urlSessionId
   }
 
@@ -285,7 +285,7 @@ function RAGChatPage() {
           setUseSession(false)
           setMessages([])
           setSessionError(null)
-          navigate('/rag/chat')
+          navigate('/rag')
         }
         await loadSessions()
       } catch (error) {
@@ -301,7 +301,7 @@ function RAGChatPage() {
       setMessages([])
       setCurrentSessionId(null)
       setUseSession(false)
-      navigate('/rag/chat')
+      navigate('/rag')
     }
   }
 
