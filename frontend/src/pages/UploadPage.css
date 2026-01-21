@@ -248,3 +248,42 @@
   cursor: not-allowed;
 }
 
+/* Phase indicator styles */
+.file-progress-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 280px;
+}
+
+.phase-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.phase {
+  color: #9ca3af;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.phase.active {
+  color: #10b981;
+  font-weight: 600;
+  background: #f0fdf4;
+}
+
+.phase.completed {
+  color: #059669;
+  font-weight: 500;
+}
+
+.phase-arrow {
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+

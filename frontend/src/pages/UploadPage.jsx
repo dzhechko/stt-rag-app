@@ -104,11 +104,28 @@ function UploadPage() {
         } else if (transcriptionJob.status === 'completed') {
           // Transcription completed
           console.log(`[Polling] Transcription completed for ${transcriptId}`)
-          setFiles(prev => prev.map(f => 
-            f.transcriptId === transcriptId 
-              ? { ...f, status: 'transcribed' }
-              : f
-          ))
+          setFiles(prev => {
+            const updated = prev.map(f => 
+              f.transcriptId === transcriptId 
+                ? { ...f, status: 'transcribed' }
+                : f
+            )
+            // Check if all files are processed (transcribed, error, or pending)
+            const allProcessed = updated.every(f => 
+              f.status === 'transcribed' || f.status === 'error' || f.status === 'pending'
+            )
+            const hasTranscribed = updated.some(f => f.status === 'transcribed')
+            
+            // Redirect to transcripts page after all files are processed
+            if (allProcessed && hasTranscribed) {
+              console.log(`[Polling] All files processed, redirecting to /transcripts in 2 seconds`)
+              setTimeout(() => {
+                navigate('/transcripts')
+              }, 2000)
+            }
+            
+            return updated
+          })
         } else if (transcriptionJob.status === 'failed') {
           // Transcription failed
           console.log(`[Polling] Transcription failed for ${transcriptId}:`, transcriptionJob.error_message)
@@ -220,13 +237,7 @@ function UploadPage() {
           
           // useEffect will handle polling automatically when files state updates
           // No need to start polling here - useEffect will catch the state change
-          
-          // Navigate to transcripts page after first successful upload
-          if (i === 0) {
-            setTimeout(() => {
-              navigate('/transcripts')
-            }, 1000)
-          }
+          // Redirect will happen when transcription completes (in pollTranscriptionProgress)
         } catch (error) {
           setFiles(prev => prev.map((f, idx) => 
             idx === i ? { ...f, status: 'error', error: error.response?.data?.detail || error.message } : f
@@ -315,9 +326,27 @@ function UploadPage() {
                 )}
                 {(fileItem.status === 'uploading' || fileItem.status === 'processing') && (() => {
                   const progressData = calculateFileProgress(fileItem)
+                  const isTranscribing = fileItem.transcriptId !== null
+                  const currentPhase = isTranscribing ? 'transcription' : 'upload'
+                  // Calculate phase-specific progress
+                  const transcriptionPercent = isTranscribing 
+                    ? Math.round(Math.max(0, (progressData.combined - 0.4) / 0.6 * 100))
+                    : 0
                   
                   return (
-                    <div className="transcription-status">
+                    <div className="file-progress-phases">
+                      {/* Индикатор текущей фазы */}
+                      <div className="phase-indicator">
+                        <span className={`phase ${currentPhase === 'upload' ? 'active' : 'completed'}`}>
+                          1. Загрузка {currentPhase !== 'upload' && '✓'}
+                        </span>
+                        <span className="phase-arrow">→</span>
+                        <span className={`phase ${currentPhase === 'transcription' ? 'active' : ''}`}>
+                          2. Транскрибация {isTranscribing && `${transcriptionPercent}%`}
+                        </span>
+                      </div>
+                      
+                      {/* Прогресс-бар */}
                       <div className="progress-container">
                         <div className="progress-bar">
                           <div
@@ -326,9 +355,9 @@ function UploadPage() {
                           />
                         </div>
                         <span className="progress-text">
-                          {fileItem.transcriptId
-                            ? `Транскрибация... ${Math.round(progressData.combined * 100)}%`
-                            : `Загрузка файла... ${Math.round(progressData.uploadProgress * 100)}%`}
+                          {isTranscribing
+                            ? `Общий прогресс: ${Math.round(progressData.combined * 100)}%`
+                            : `Загрузка... ${Math.round(progressData.uploadProgress * 100)}%`}
                         </span>
                       </div>
                     </div>
