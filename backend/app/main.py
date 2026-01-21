@@ -313,10 +313,14 @@ async def process_transcription(
                 ).first()
                 if fresh_job:
                     fresh_job.progress = min(max(progress, 0.0), 1.0)  # Clamp between 0 and 1
+                    db.flush()  # Немедленная запись в БД
                     db.commit()
-                    logger.debug(f"Progress updated to {progress:.2%} for transcript {transcript_id}")
+                    logger.info(f"Transcription progress: {progress:.0%} for transcript {transcript_id}")
+                else:
+                    logger.warning(f"Transcription job not found for transcript {transcript_id}")
             except Exception as e:
-                logger.error(f"Error updating progress: {str(e)}", exc_info=True)
+                logger.error(f"Error updating transcription progress: {str(e)}", exc_info=True)
+                db.rollback()  # Откат при ошибке
         
         # Emulate progress for regular files (not chunked)
         def emulate_progress():
