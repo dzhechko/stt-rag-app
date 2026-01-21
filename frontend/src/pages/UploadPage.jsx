@@ -6,7 +6,7 @@ import './UploadPage.css'
 
 function UploadPage() {
   const [files, setFiles] = useState([])
-  const [language, setLanguage] = useState('')
+  const [language, setLanguage] = useState('ru')
   const [uploading, setUploading] = useState(false)
   const [fileProgress, setFileProgress] = useState({}) // { transcriptId: progress }
   const navigate = useNavigate()
@@ -291,15 +291,15 @@ function UploadPage() {
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
           >
-            <option value="">Автоопределение (может быть менее точным)</option>
-            <option value="ru">Русский - Рекомендуется для встреч на русском языке</option>
+            <option value="ru">Русский (рекомендуется)</option>
             <option value="en">English</option>
+            <option value="">Автоопределение (может переводить на английский!)</option>
             <option value="de">German</option>
             <option value="fr">French</option>
             <option value="es">Spanish</option>
           </select>
           <small className="language-hint">
-            Для русских встреч рекомендуется выбрать "Russian" для более точной транскрибации
+            Важно: при "Автоопределении" Whisper может переводить на английский вместо транскрибирования
           </small>
         </div>
 
