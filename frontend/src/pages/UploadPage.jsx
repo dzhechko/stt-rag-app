@@ -326,19 +326,32 @@ function UploadPage() {
                 )}
                 {(fileItem.status === 'uploading' || fileItem.status === 'processing') && (() => {
                   const progressData = calculateFileProgress(fileItem)
-                  const isTranscribing = fileItem.transcriptId !== null
+                  // Определяем фазу по нескольким признакам для надёжности:
+                  // - status === 'processing' означает что загрузка завершена
+                  // - uploadProgress >= 1.0 означает что загрузка завершена
+                  // - transcriptId !== null означает что сервер вернул ID
+                  const isUploadComplete = fileItem.uploadProgress >= 1.0 || fileItem.status === 'processing'
+                  const hasTranscriptId = fileItem.transcriptId !== null
+                  const isTranscribing = isUploadComplete || hasTranscriptId
                   const currentPhase = isTranscribing ? 'transcription' : 'upload'
-                  // Calculate phase-specific progress
-                  const transcriptionPercent = isTranscribing 
-                    ? Math.round(Math.max(0, (progressData.combined - 0.4) / 0.6 * 100))
+                  
+                  // Рассчитываем прогресс транскрибации
+                  const transcriptionProgress = hasTranscriptId && fileProgress[fileItem.transcriptId] !== undefined
+                    ? fileProgress[fileItem.transcriptId]
                     : 0
+                  const transcriptionPercent = Math.round(transcriptionProgress * 100)
+                  
+                  // Общий прогресс: 40% загрузка + 60% транскрибация
+                  const combinedProgress = isTranscribing
+                    ? 0.4 + 0.6 * transcriptionProgress
+                    : progressData.uploadProgress * 0.4
                   
                   return (
-                    <div className="file-progress-phases">
+                    <div className="file-progress-phases" key={`${fileItem.id}-${currentPhase}`}>
                       {/* Индикатор текущей фазы */}
                       <div className="phase-indicator">
                         <span className={`phase ${currentPhase === 'upload' ? 'active' : 'completed'}`}>
-                          1. Загрузка {currentPhase !== 'upload' && '✓'}
+                          1. Загрузка {isUploadComplete && '✓'}
                         </span>
                         <span className="phase-arrow">→</span>
                         <span className={`phase ${currentPhase === 'transcription' ? 'active' : ''}`}>
@@ -351,13 +364,13 @@ function UploadPage() {
                         <div className="progress-bar">
                           <div
                             className="progress-fill"
-                            style={{ width: `${Math.round(progressData.combined * 100)}%` }}
+                            style={{ width: `${Math.round(combinedProgress * 100)}%` }}
                           />
                         </div>
                         <span className="progress-text">
                           {isTranscribing
-                            ? `Общий прогресс: ${Math.round(progressData.combined * 100)}%`
-                            : `Загрузка... ${Math.round(progressData.uploadProgress * 100)}%`}
+                            ? `Транскрибация: ${transcriptionPercent}% (общий: ${Math.round(combinedProgress * 100)}%)`
+                            : `Загрузка: ${Math.round(progressData.uploadProgress * 100)}%`}
                         </span>
                       </div>
                     </div>
