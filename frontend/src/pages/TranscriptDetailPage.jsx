@@ -152,14 +152,19 @@ function TranscriptDetailPage() {
   const [visibleSummaries, setVisibleSummaries] = useState(new Set()) // ID видимых summaries
   const [expandedSummaries, setExpandedSummaries] = useState(new Set()) // ID развернутых summaries (preview/full)
 
+  // Initial load - transcript and jobs
   useEffect(() => {
     loadTranscript()
     loadJobs()
+  }, [id])
+  
+  // Load summaries and index status when transcript is loaded and completed
+  useEffect(() => {
     if (transcript?.status === 'completed') {
       loadSummaries()
       loadIndexStatus()
     }
-  }, [id])
+  }, [id, transcript?.status])
 
   // Effect to update elapsed time every second during translation
   useEffect(() => {
