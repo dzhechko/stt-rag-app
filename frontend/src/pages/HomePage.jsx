@@ -11,16 +11,19 @@ function HomePage() {
           <span>АНАЛИЗ СИСТЕМЫ ЗАВЕРШЕН</span>
         </div>
         <h1 className="hero-title">
-          <span className="hero-title-main">STT</span> APP: ТРАНСКРИБАЦИЯ И RAG
+          <span className="hero-title-main">STT</span> APP: ТРАНСКРИБАЦИЯ, ПЕРЕВОД И RAG
         </h1>
         <p className="hero-description">
           Полнофункциональная платформа для транскрибации аудио и работы с Retrieval-Augmented Generation. 
           Исследуйте возможности транскрибации, управления документами и интеллектуального поиска в интерактивной среде.
         </p>
         <div className="hero-buttons">
-          <Link to="/transcripts" className="btn-hero btn-hero-primary">
-            <span>ПЕРЕЙТИ К ТРАНСКРИПТАМ ВСТРЕЧ</span>
+          <Link to="/upload" className="btn-hero btn-hero-primary">
+            <span>ЗАГРУЗИТЬ ФАЙЛ</span>
             <ArrowRight size={20} />
+          </Link>
+          <Link to="/transcripts" className="btn-hero btn-hero-secondary">
+            <span>ТРАНСКРИПТЫ</span>
           </Link>
           <Link to="/rag" className="btn-hero btn-hero-secondary">
             <span>RAG ЧАТ</span>
