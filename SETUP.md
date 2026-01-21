@@ -17,7 +17,7 @@ cp .env.example .env
 2. Отредактируйте `.env` и добавьте ваши API ключи:
 ```env
 EVOLUTION_API_KEY=sk-your-actual-api-key
-EVOLUTION_BASE_URL=https://foundation-models.api.cloud.ru/api/gigacube/openai/v1
+EVOLUTION_BASE_URL=https://foundation-models.api.cloud.ru/v1
 ```
 
 ### 3. Запуск

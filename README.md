@@ -33,7 +33,7 @@ cp .env.example .env
 3. Заполните `.env` файл вашими API ключами:
 ```env
 EVOLUTION_API_KEY=sk-your-api-key
-EVOLUTION_BASE_URL=https://foundation-models.api.internal.cloud.ru/v1
+EVOLUTION_BASE_URL=https://foundation-models.api.cloud.ru/v1
 ```
 
 4. Запустите приложение:
