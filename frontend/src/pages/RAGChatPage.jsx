@@ -402,7 +402,7 @@ function RAGChatPage() {
                 if (!e.target.checked) {
                   setCurrentSessionId(null)
                   setMessages([])
-                  navigate('/rag/chat')
+                  navigate('/rag')
                 }
               }}
             />
