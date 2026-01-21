@@ -47,61 +47,51 @@ function UploadPage() {
   // Calculate progress for a file item - ensures recalculation when fileProgress changes
   const calculateFileProgress = useCallback((fileItem) => {
     const uploadProgress = fileItem.uploadProgress ?? 0
-    const currentFileProgress = fileItem.transcriptId ? fileProgress[fileItem.transcriptId] : undefined
-    const transcriptionProgress = fileItem.transcriptId
-      ? (currentFileProgress !== undefined ? currentFileProgress : 0)
+    const transcriptionProgress = fileItem.transcriptId 
+      ? (fileProgress[fileItem.transcriptId] ?? 0)
       : 0
     // If transcriptId exists, upload is complete, so use: 0.4 + 0.6 * transcriptionProgress
-    // Otherwise, use upload progress only
     const combined = fileItem.transcriptId
       ? 0.4 + 0.6 * transcriptionProgress
       : uploadProgress
-    
-    // Detailed debug logging to see actual fileProgress value at render time
-    console.log(`[Progress Debug Render] File: ${fileItem.file.name}, transcriptId: ${fileItem.transcriptId}`)
-    console.log(`[Progress Debug Render] fileProgress object:`, fileProgress)
-    console.log(`[Progress Debug Render] fileProgress[${fileItem.transcriptId}]:`, currentFileProgress)
-    console.log(`[Progress Debug Render] uploadProgress: ${uploadProgress}, transcriptionProgress: ${transcriptionProgress}, combined: ${combined}`)
     
     return { uploadProgress, transcriptionProgress, combined }
   }, [fileProgress])
 
   const pollTranscriptionProgress = async (transcriptId) => {
-    console.log(`[Polling] Starting poll for transcriptId: ${transcriptId}`)
+    console.log(`[Polling] Poll for: ${transcriptId}`)
     try {
       const jobs = await getTranscriptJobs(transcriptId)
-      console.log(`[Polling] Received jobs for ${transcriptId}:`, jobs)
       const transcriptionJob = jobs.find(j => j.job_type === 'transcription')
-      console.log(`[Polling] Found transcriptionJob:`, transcriptionJob)
       
       if (transcriptionJob) {
         // Reset polling attempts counter when job is found
         pollingAttemptsRef.current[transcriptId] = 0
         
-        // Always update progress if job exists
-        if (transcriptionJob.progress !== undefined) {
-          console.log(`[Polling] Updating fileProgress for ${transcriptId} to ${transcriptionJob.progress}`)
-          setFileProgress(prev => {
-            const updated = {
-              ...prev,
-              [transcriptId]: transcriptionJob.progress
-            }
-            console.log(`[Polling] fileProgress updated:`, updated)
-            return updated
-          })
-        } else {
-          console.log(`[Polling] transcriptionJob.progress is undefined for ${transcriptId}`)
-        }
+        const progress = transcriptionJob.progress ?? 0
+        const status = transcriptionJob.status
+        
+        // ВАЖНО: Всегда обновляем прогресс для отображения динамики
+        console.log(`[Progress] ${transcriptId.slice(0,8)}: ${Math.round(progress * 100)}% (${status})`)
+        
+        setFileProgress(prev => {
+          // Только обновляем если прогресс изменился
+          if (prev[transcriptId] !== progress) {
+            console.log(`[Progress Update] ${Math.round((prev[transcriptId] || 0) * 100)}% -> ${Math.round(progress * 100)}%`)
+            return { ...prev, [transcriptId]: progress }
+          }
+          return prev
+        })
         
         // Update file status based on job status
-        if (transcriptionJob.status === 'processing' || transcriptionJob.status === 'queued') {
+        if (status === 'processing' || status === 'queued') {
           // Keep status as 'processing' while transcription is in progress
           setFiles(prev => prev.map(f => 
             f.transcriptId === transcriptId 
               ? { ...f, status: 'processing' }
               : f
           ))
-        } else if (transcriptionJob.status === 'completed') {
+        } else if (status === 'completed') {
           // Transcription completed
           console.log(`[Polling] Transcription completed for ${transcriptId}`)
           setFiles(prev => {
@@ -126,7 +116,7 @@ function UploadPage() {
             
             return updated
           })
-        } else if (transcriptionJob.status === 'failed') {
+        } else if (status === 'failed') {
           // Transcription failed
           console.log(`[Polling] Transcription failed for ${transcriptId}:`, transcriptionJob.error_message)
           setFiles(prev => prev.map(f => 
@@ -137,8 +127,8 @@ function UploadPage() {
         }
         
         // Return true if we should stop polling (completed or failed)
-        const shouldStop = transcriptionJob.status === 'completed' || transcriptionJob.status === 'failed'
-        console.log(`[Polling] Should stop polling for ${transcriptId}:`, shouldStop)
+        const shouldStop = status === 'completed' || status === 'failed'
+        if (shouldStop) console.log(`[Polling] Stopping for ${transcriptId.slice(0,8)} - ${status}`)
         return shouldStop
       } else {
         console.log(`[Polling] No transcriptionJob found for ${transcriptId}, jobs:`, jobs)
