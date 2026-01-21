@@ -233,6 +233,13 @@
   color: white;
 }
 
+.job-duration {
+  font-size: 0.85rem;
+  color: #666;
+  margin-left: 0.5rem;
+  font-weight: 500;
+}
+
 .progress-container {
   display: flex;
   align-items: center;

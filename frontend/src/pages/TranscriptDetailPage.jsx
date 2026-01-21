@@ -123,6 +123,15 @@ function formatDuration(seconds) {
   }
 }
 
+// Calculate job duration from created_at and updated_at
+function calculateJobDuration(job) {
+  if (job.status !== 'completed' || !job.created_at || !job.updated_at) return null
+  const start = new Date(job.created_at)
+  const end = new Date(job.updated_at)
+  const durationSeconds = Math.round((end - start) / 1000)
+  return durationSeconds > 0 ? durationSeconds : null
+}
+
 function TranscriptDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -757,30 +766,38 @@ function TranscriptDetailPage() {
       {jobs.length > 0 && (
         <div className="jobs-section">
           <h2>Задачи обработки</h2>
-          {jobs.map(job => (
-            <div key={job.id} className="job-item">
-              <div className="job-info">
-                <span className="job-type">{getJobTypeLabel(job.job_type)}</span>
-                <span className={`job-status job-status-${job.status}`}>{job.status}</span>
-                {job.progress > 0 && (
-                  <div className="progress-container">
-                    <div className="progress-bar">
-                      <div
-                        className="progress-fill"
-                        style={{ width: `${job.progress * 100}%` }}
-                      />
-                    </div>
-                    <span className="progress-text">
-                      {Math.round(job.progress * 100)}%
+          {jobs.map(job => {
+            const duration = calculateJobDuration(job)
+            return (
+              <div key={job.id} className="job-item">
+                <div className="job-info">
+                  <span className="job-type">{getJobTypeLabel(job.job_type)}</span>
+                  <span className={`job-status job-status-${job.status}`}>{job.status}</span>
+                  {job.status === 'completed' && duration !== null && (
+                    <span className="job-duration">
+                      {formatDuration(duration)}
                     </span>
-                  </div>
+                  )}
+                  {job.progress > 0 && job.status !== 'completed' && (
+                    <div className="progress-container">
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${job.progress * 100}%` }}
+                        />
+                      </div>
+                      <span className="progress-text">
+                        {Math.round(job.progress * 100)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {job.error_message && (
+                  <div className="job-error">{job.error_message}</div>
                 )}
               </div>
-              {job.error_message && (
-                <div className="job-error">{job.error_message}</div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
