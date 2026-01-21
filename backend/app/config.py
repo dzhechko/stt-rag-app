@@ -8,8 +8,6 @@ class Settings(BaseSettings):
     # Evolution Cloud.ru API
     evolution_api_key: str
     evolution_base_url: str = "https://foundation-models.api.internal.cloud.ru/v1"
-    evolution_key_id: str = ""
-    evolution_secret: str = ""
     
     @field_validator('evolution_base_url', mode='after')
     @classmethod

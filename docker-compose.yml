@@ -25,8 +25,6 @@ services:
       DATABASE_URL: postgresql://stt_user:stt_password@postgres:5432/stt_db
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
       EVOLUTION_BASE_URL: ${EVOLUTION_BASE_URL}
-      EVOLUTION_KEY_ID: ${EVOLUTION_KEY_ID}
-      EVOLUTION_SECRET: ${EVOLUTION_SECRET}
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       UPLOAD_DIR: /app/volumes/audio
