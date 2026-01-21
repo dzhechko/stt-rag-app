@@ -2,7 +2,7 @@ import os
 import logging
 import time
 import threading
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -203,7 +203,7 @@ async def health_check():
 async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    language: Optional[str] = None,
+    language: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
