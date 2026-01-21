@@ -893,10 +893,25 @@ async def ask_question_in_session(
         transcript_ids_str = [str(tid) for tid in transcript_ids]
         logger.info(f"Answering question in session with transcript filter: {transcript_ids_str}")
     
+    # Fetch conversation history from the session (last 10 messages)
+    previous_messages = db.query(RAGMessage).filter(
+        RAGMessage.session_id == session_id
+    ).order_by(RAGMessage.created_at.desc()).limit(10).all()
+    
+    # Convert to format expected by answer_question (reverse to chronological order)
+    conversation_history = [
+        {"question": msg.question, "answer": msg.answer}
+        for msg in reversed(previous_messages)
+    ]
+    
+    if conversation_history:
+        logger.info(f"Including {len(conversation_history)} previous messages from session {session_id}")
+    
     try:
         result = rag_qa_service.answer_question(
             question=question_data.question,
             transcript_ids=transcript_ids_str,
+            conversation_history=conversation_history,
             model=question_data.model or None,
             top_k=question_data.top_k or 5,
             temperature=question_data.temperature or 0.3,

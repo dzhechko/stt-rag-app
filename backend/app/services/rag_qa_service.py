@@ -72,6 +72,7 @@ class RAGQAService:
         self,
         question: str,
         transcript_ids: Optional[List[str]] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
         model: Optional[str] = None,
         top_k: int = 5,
         temperature: float = 0.3,
@@ -88,6 +89,7 @@ class RAGQAService:
         Args:
             question: User question
             transcript_ids: Optional list of transcript IDs to search (can be UUID strings or UUID objects)
+            conversation_history: Optional list of previous Q&A pairs [{"question": ..., "answer": ...}]
             model: Model to use for generation
         
         Returns:
@@ -206,18 +208,28 @@ class RAGQAService:
 Ответ (обязательно со ссылками на источники в формате [1], [2], [3]...):"""
         
         try:
+            # Build messages list with conversation history
+            messages = [
+                {
+                    "role": "system",
+                    "content": "Ты помощник, который отвечает на вопросы на основе предоставленного контекста из транскриптов. ВАЖНО: Всегда добавляй ссылки на источники в квадратных скобках [1], [2], [3] и т.д. в тексте ответа, когда используешь информацию из контекста. Каждая ссылка должна соответствовать номеру источника из контекста."
+                }
+            ]
+            
+            # Add conversation history (last 10 messages to save tokens)
+            if conversation_history:
+                history_to_use = conversation_history[-10:]
+                logger.info(f"Including {len(history_to_use)} previous messages in conversation context")
+                for msg in history_to_use:
+                    messages.append({"role": "user", "content": msg["question"]})
+                    messages.append({"role": "assistant", "content": msg["answer"]})
+            
+            # Add current question with context
+            messages.append({"role": "user", "content": prompt})
+            
             response = self.client.chat.completions.create(
                 model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Ты помощник, который отвечает на вопросы на основе предоставленного контекста из транскриптов. ВАЖНО: Всегда добавляй ссылки на источники в квадратных скобках [1], [2], [3] и т.д. в тексте ответа, когда используешь информацию из контекста. Каждая ссылка должна соответствовать номеру источника из контекста."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
+                messages=messages,
                 temperature=temperature,
                 max_tokens=1000
             )
