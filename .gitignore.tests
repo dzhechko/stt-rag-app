@@ -1,0 +1,20 @@
+# Additions to .gitignore for tests and CI/CD
+/frontend/coverage/
+/frontend/test-results/
+/frontend/.vitest/
+/backend/htmlcov/
+/backend/.coverage*
+/backend/test-results/
+/backend/.pytest_cache/
+/backend/.mypy_cache/
+/backend/ruff-report.json
+/backend/bandit-report.json
+/backend/pylint-report.json
+/backend/lizard-report.json
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/playwright/.cache/
+/test-results/
+/playwright-report/
+*.log
+*.sarif

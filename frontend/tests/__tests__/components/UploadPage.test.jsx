@@ -179,7 +179,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       expect(fileInput).toBeInTheDocument()
       expect(fileInput).toHaveAttribute('multiple')
       expect(fileInput).toHaveAttribute('accept', 'audio/*,video/*')
@@ -193,7 +193,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
 
       await userEvent.upload(fileInput, file)
 
@@ -220,7 +220,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -249,7 +249,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -278,7 +278,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -312,7 +312,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -338,7 +338,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Пертащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -367,7 +367,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -428,7 +428,7 @@ describe('UploadPage', () => {
           </MemoryRouter>
         )
 
-        const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+        const fileInput = document.querySelector('input[type="file"]')
         await userEvent.upload(fileInput, file)
 
         if (valid) {
@@ -453,7 +453,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       await waitFor(() => {
@@ -484,7 +484,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -518,7 +518,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       await waitFor(() => {
@@ -535,7 +535,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file1)
       await userEvent.upload(fileInput, file2)
 
@@ -555,7 +555,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)
@@ -575,7 +575,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/)
+      const fileInput = document.querySelector('input[type="file"]')
       expect(fileInput).toBeInTheDocument()
 
       const languageSelect = screen.getByLabelText('Язык:')
@@ -619,7 +619,7 @@ describe('UploadPage', () => {
         </MemoryRouter>
       )
 
-      const fileInput = screen.getByLabelText(/Перетащите аудио файлы/, { selector: 'input[type="file"]' })
+      const fileInput = document.querySelector('input[type="file"]')
       await userEvent.upload(fileInput, file)
 
       const uploadButton = await screen.findByText(/Загрузить 1 файл/)

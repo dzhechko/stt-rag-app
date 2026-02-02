@@ -209,7 +209,7 @@ class TestRAGModels:
         assert len(model.transcript_ids) == 3
 
     def test_rag_question_request_minimal(self):
-        """Test RAGQuestionRequest with minimal data."""
+        """Test RAGQuestionRequest with minimal data (uses defaults)."""
         data = {
             "question": "What is discussed?"
         }
@@ -217,7 +217,15 @@ class TestRAGModels:
 
         assert model.question == "What is discussed?"
         assert model.transcript_ids is None
-        assert model.top_k is None
+        # Default values are applied
+        assert model.top_k == 5
+        assert model.temperature == 0.3
+        assert model.use_reranking is True
+        assert model.use_query_expansion is True
+        assert model.use_multi_hop is False
+        assert model.use_hybrid_search is False
+        assert model.use_advanced_grading is False
+        assert model.reranker_model == "ms-marco-MiniLM-L-6-v2"
 
     def test_rag_question_request_full(self):
         """Test RAGQuestionRequest with all parameters."""
