@@ -14,11 +14,14 @@ try:
     from pytest_asyncio import is_async_test
 except ImportError:
     # pytest-asyncio >= 0.17 doesn't have is_async_test
-    def is_async_test(obj, name):
-        return asyncio.iscoroutinefunction(getattr(obj, name, None))
+    def is_async_test(item):
+        """Check if a test item is async."""
+        obj = item.obj if hasattr(item, 'obj') else item
+        return asyncio.iscoroutinefunction(obj) if callable(obj) else False
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, TypeDecorator
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.dialects.postgresql import UUID
 
 # Add backend to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -27,8 +30,9 @@ from app.main import app
 from app.database import Base, get_db, Transcript, TranscriptStatus, Summary, RAGSession, RAGMessage, ProcessingJob, JobType, JobStatus
 
 
-# Test database URL (use SQLite for tests)
-TEST_DATABASE_URL = "sqlite:///./test.db"
+# Test database URL (use PostgreSQL for tests - SQLite lacks UUID/ARRAY support)
+# Uses the same database as development but with test prefix
+TEST_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://stt_user:stt_password@postgres:5432/stt_db")
 
 
 @pytest.fixture(scope="session")
@@ -44,16 +48,16 @@ def event_loop():
 @pytest.fixture(scope="function")
 def db_engine():
     """Create a test database engine."""
-    engine = create_engine(
-        TEST_DATABASE_URL,
-        connect_args={"check_same_thread": False}  # Needed for SQLite
-    )
+    # Use PostgreSQL for tests (SQLite doesn't support UUID/ARRAY/JSONB properly)
+    engine = create_engine(TEST_DATABASE_URL)
+
+    # Create all tables
     Base.metadata.create_all(bind=engine)
+
     yield engine
+
+    # Clean up - drop all tables after test
     Base.metadata.drop_all(bind=engine)
-    # Clean up test database file
-    if os.path.exists("./test.db"):
-        os.remove("./test.db")
 
 
 @pytest.fixture(scope="function")
