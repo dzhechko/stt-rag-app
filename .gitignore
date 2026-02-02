@@ -96,3 +96,8 @@ coverage.xml
 Thumbs.db
 .DS_Store
 
+
+# Claude Flow & AgentDB
+.claude-flow/
+dpzhechkov/
+agentdb.db
