@@ -3,12 +3,20 @@ import time
 import logging
 import tempfile
 import shutil
+import subprocess
 import httpx
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List, Callable, Tuple
 from openai import OpenAI
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# Supported audio formats by SberCloud API (no conversion needed)
+SUPPORTED_AUDIO_FORMATS = {'.mp3', '.wav', '.m4a', '.mpeg', '.mpga'}
+
+# Video formats that require conversion to MP3
+VIDEO_FORMATS_REQUIRING_CONVERSION = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
 
 
 class TranscriptionService:
@@ -49,6 +57,75 @@ class TranscriptionService:
         )
         self.max_retries = 3
         self.max_file_size = settings.max_file_size_mb * 1024 * 1024  # Convert to bytes
+
+    def _convert_to_mp3_if_needed(self, file_path: str) -> Tuple[str, bool]:
+        """
+        Convert video/audio files to MP3 format for SberCloud API compatibility.
+
+        SberCloud API returns 503 for MP4 files - they must be converted to MP3 first.
+
+        Args:
+            file_path: Path to the input file
+
+        Returns:
+            Tuple of (file_path_to_use, is_temporary)
+            - file_path_to_use: Either original path or converted MP3 path
+            - is_temporary: True if converted file should be deleted after use
+        """
+        ext = os.path.splitext(file_path)[1].lower()
+
+        # Check if conversion is needed
+        if ext in SUPPORTED_AUDIO_FORMATS:
+            logger.debug(f"File format {ext} is supported by SberCloud API, no conversion needed")
+            return file_path, False
+
+        if ext in VIDEO_FORMATS_REQUIRING_CONVERSION or ext not in SUPPORTED_AUDIO_FORMATS:
+            logger.info(f"Converting {ext} file to MP3 for SberCloud API compatibility")
+
+            # Create temporary MP3 file
+            temp_mp3 = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+            temp_mp3_path = temp_mp3.name
+            temp_mp3.close()
+
+            try:
+                # Use ffmpeg to convert (extract audio as MP3)
+                logger.info(f"Running ffmpeg conversion: {file_path} -> {temp_mp3_path}")
+                result = subprocess.run(
+                    ['ffmpeg', '-i', file_path,
+                     '-vn',  # No video
+                     '-acodec', 'libmp3lame',  # MP3 codec
+                     '-q:a', '2',  # High quality (0-9, lower is better)
+                     '-y',  # Overwrite output file
+                     temp_mp3_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 minute timeout for conversion
+                )
+
+                if result.returncode != 0:
+                    logger.error(f"FFmpeg conversion failed: {result.stderr}")
+                    # Fall back to original file
+                    return file_path, False
+
+                # Get file sizes for logging
+                original_size = os.path.getsize(file_path)
+                converted_size = os.path.getsize(temp_mp3_path)
+                logger.info(f"✅ Conversion successful: {original_size / 1024 / 1024:.2f} MB -> {converted_size / 1024 / 1024:.2f} MB")
+
+                return temp_mp3_path, True
+
+            except subprocess.TimeoutExpired:
+                logger.error(f"FFmpeg conversion timed out after 5 minutes")
+                if os.path.exists(temp_mp3_path):
+                    os.unlink(temp_mp3_path)
+                return file_path, False
+            except Exception as e:
+                logger.error(f"Error during conversion: {e}")
+                if os.path.exists(temp_mp3_path):
+                    os.unlink(temp_mp3_path)
+                return file_path, False
+
+        return file_path, False
     
     def transcribe_file(
         self,
@@ -60,95 +137,103 @@ class TranscriptionService:
         """
         Transcribe audio file using Whisper Large v3
         Automatically handles large files by splitting into chunks
-        
+
         Args:
             file_path: Path to audio file
             language: ISO-639-1 language code (None for auto-detect)
             response_format: Format of response (text, json) - Evolution Cloud.ru supports only json and text
-        
+
         Returns:
             Dictionary with transcription results
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
-        
-        file_size = os.path.getsize(file_path)
-        
-        # If file is too large, split and process in chunks
-        if file_size > self.max_file_size:
-            logger.info(f"File size ({file_size / 1024 / 1024:.2f} MB) exceeds limit, splitting into chunks")
-            return self._transcribe_large_file(file_path, language, response_format, progress_callback)
-        
-        # Process normally for files under limit
-        
-        for attempt in range(self.max_retries):
-            try:
-                logger.info(f"Transcription attempt {attempt + 1}/{self.max_retries} for {file_path}")
-                
-                with open(file_path, "rb") as audio_file:
-                    transcription_params = {
-                        "model": "openai/whisper-large-v3",
-                        "file": audio_file,
-                        "response_format": response_format,
-                        "temperature": 0.0
-                    }
-                    if language and language.strip():
-                        # Force language parameter - Evolution Cloud.ru should respect it
-                        transcription_params["language"] = language.strip()
-                        logger.info(f"Transcribing with EXPLICIT language: {language.strip()} (will be forced)")
+
+        # Convert video/unsupported formats to MP3 for SberCloud API compatibility
+        file_path, is_temp_file = self._convert_to_mp3_if_needed(file_path)
+
+        try:
+            file_size = os.path.getsize(file_path)
+
+            # If file is too large, split and process in chunks
+            if file_size > self.max_file_size:
+                logger.info(f"File size ({file_size / 1024 / 1024:.2f} MB) exceeds limit, splitting into chunks")
+                return self._transcribe_large_file(file_path, language, response_format, progress_callback)
+
+            # Process normally for files under limit
+            for attempt in range(self.max_retries):
+                try:
+                    logger.info(f"Transcription attempt {attempt + 1}/{self.max_retries} for {file_path}")
+
+                    with open(file_path, "rb") as audio_file:
+                        transcription_params = {
+                            "model": "openai/whisper-large-v3",
+                            "file": audio_file,
+                            "response_format": response_format,
+                            "temperature": 0.0
+                        }
+                        if language and language.strip():
+                            # Force language parameter - Evolution Cloud.ru should respect it
+                            transcription_params["language"] = language.strip()
+                            logger.info(f"Transcribing with EXPLICIT language: {language.strip()} (will be forced)")
+                        else:
+                            logger.info("Transcribing with auto-detection (language not specified)")
+
+                        transcript = self.client.audio.transcriptions.create(**transcription_params)
+
+                    logger.info(f"Successfully transcribed {file_path}")
+
+                    # Parse response based on format
+                    # Evolution Cloud.ru returns json format (not verbose_json)
+                    if response_format == "json":
+                        # Try to get full response data
+                        if hasattr(transcript, "model_dump"):
+                            full_data = transcript.model_dump()
+                        elif hasattr(transcript, "dict"):
+                            full_data = transcript.dict()
+                        else:
+                            full_data = {"text": str(transcript)}
+
+                        return {
+                            "text": transcript.text if hasattr(transcript, "text") else str(transcript),
+                            "language": getattr(transcript, "language", language),
+                            "segments": full_data.get("segments", []),
+                            "words": full_data.get("words", []),
+                            "full_response": full_data
+                        }
+                    elif response_format == "srt":
+                        return {
+                            "text": str(transcript),
+                            "srt": str(transcript),
+                            "language": language
+                        }
+                    elif response_format == "vtt":
+                        return {
+                            "text": str(transcript),
+                            "vtt": str(transcript),
+                            "language": language
+                        }
+                    else:  # text
+                        return {
+                            "text": transcript.text if hasattr(transcript, "text") else str(transcript),
+                            "language": language
+                        }
+
+                except Exception as e:
+                    logger.error(f"Error in transcription attempt {attempt + 1}: {str(e)}")
+
+                    if attempt < self.max_retries - 1:
+                        wait_time = 2 ** attempt  # Exponential backoff
+                        logger.info(f"Waiting {wait_time} seconds before retry...")
+                        time.sleep(wait_time)
                     else:
-                        logger.info("Transcribing with auto-detection (language not specified)")
-                    
-                    transcript = self.client.audio.transcriptions.create(**transcription_params)
-                
-                logger.info(f"Successfully transcribed {file_path}")
-                
-                # Parse response based on format
-                # Evolution Cloud.ru returns json format (not verbose_json)
-                if response_format == "json":
-                    # Try to get full response data
-                    if hasattr(transcript, "model_dump"):
-                        full_data = transcript.model_dump()
-                    elif hasattr(transcript, "dict"):
-                        full_data = transcript.dict()
-                    else:
-                        full_data = {"text": str(transcript)}
-                    
-                    return {
-                        "text": transcript.text if hasattr(transcript, "text") else str(transcript),
-                        "language": getattr(transcript, "language", language),
-                        "segments": full_data.get("segments", []),
-                        "words": full_data.get("words", []),
-                        "full_response": full_data
-                    }
-                elif response_format == "srt":
-                    return {
-                        "text": str(transcript),
-                        "srt": str(transcript),
-                        "language": language
-                    }
-                elif response_format == "vtt":
-                    return {
-                        "text": str(transcript),
-                        "vtt": str(transcript),
-                        "language": language
-                    }
-                else:  # text
-                    return {
-                        "text": transcript.text if hasattr(transcript, "text") else str(transcript),
-                        "language": language
-                    }
-            
-            except Exception as e:
-                logger.error(f"Error in transcription attempt {attempt + 1}: {str(e)}")
-                
-                if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt  # Exponential backoff
-                    logger.info(f"Waiting {wait_time} seconds before retry...")
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Failed to transcribe after {self.max_retries} attempts")
-                    raise
+                        logger.error(f"Failed to transcribe after {self.max_retries} attempts")
+                        raise
+        finally:
+            # Clean up temporary converted file
+            if is_temp_file and os.path.exists(file_path):
+                logger.debug(f"Cleaning up temporary file: {file_path}")
+                os.unlink(file_path)
     
     def _transcribe_large_file(
         self,
