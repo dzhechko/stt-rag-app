@@ -10,7 +10,12 @@ from typing import AsyncGenerator, Generator
 from uuid import uuid4
 
 import pytest
-from pytest_asyncio import is_async_test
+try:
+    from pytest_asyncio import is_async_test
+except ImportError:
+    # pytest-asyncio >= 0.17 doesn't have is_async_test
+    def is_async_test(obj, name):
+        return asyncio.iscoroutinefunction(getattr(obj, name, None))
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
