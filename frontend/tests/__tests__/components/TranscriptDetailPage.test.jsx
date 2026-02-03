@@ -76,6 +76,14 @@ const mockSummaries = [
 
 describe('TranscriptDetailPage', () => {
   beforeEach(() => {
+    // Mock scrollIntoView for jsdom
+    Element.prototype.scrollIntoView = vi.fn()
+    // Mock clipboard API
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue()
+      }
+    })
     vi.clearAllMocks()
     vi.useFakeTimers()
     client.getTranscript.mockResolvedValue(mockTranscript)
