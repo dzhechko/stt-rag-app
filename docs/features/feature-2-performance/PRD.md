@@ -1,6 +1,6 @@
 # PRD: Feature 2 - Performance Optimizations
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Draft
 **Author:** Performance Team
 **Last Updated:** 2026-02-03
@@ -231,34 +231,155 @@ Implement an 8-pillar performance optimization strategy:
   - RAG components lazy loads
   - Large transcript pages virtualize
 - FR-7.3: **Bundle Optimization:**
-  - Initial bundle <500KB
-  - Gzip/Brotli compression
+  - Initial bundle <500KB (compressed, <1.5MB uncompressed)
+  - Brotli (Level 5): Target 70% reduction
+  - Gzip fallback: Target 60% reduction
   - Tree shaking enabled
-- FR-7.4: **Asset Optimization:**
+  - Verified via: gzip -9, brotli -q 5
+- FR-7.4: **Bundle Composition:**
+  - Initial bundle (<500KB compressed) includes:
+    - Core React libraries
+    - Router
+    - Authentication module
+    - Basic UI components
+  - Lazy loaded bundles:
+    - TranscriptDetail (~200KB)
+    - RAG interface (~300KB)
+    - Admin dashboard (~250KB)
+- FR-7.5: **Code Splitting Strategy:**
+  - Route-based: /transcripts, /rag, /admin
+  - Vendor split: React, DOM utilities
+  - Dynamic imports: Heavy components (audio player, charts)
+- FR-7.6: **Asset Optimization:**
   - WebP images with fallback
   - Minified CSS/JS
   - Source maps for production
+- FR-7.7: **Network Baselines:**
+  - Desktop: 25 Mbps down, 5 Mbps up (WiFi)
+  - Mobile: 4G (10 Mbps down, 5 Mbps up)
+  - Test throttling: Chrome DevTools Network presets
+- FR-7.8: **Lighthouse Targets:**
+  - Performance: >90
+  - Accessibility: >85
+  - Best Practices: >90
+  - SEO: >85 (if applicable)
+  - Tested on: Chrome Desktop, Mobile Emulation (iPhone 12)
 
 **Acceptance Criteria:**
-- Initial load <500KB (compressed)
-- Time to Interactive <3s
-- Lighthouse score >90
+- Initial load <500KB (compressed, <1.5MB uncompressed)
+- Time to Interactive <3s on desktop WiFi, <5s on mobile 4G
+- First Contentful Paint <1.5s on desktop
+- Lighthouse Performance score >90 (Desktop and Mobile)
+- Lighthouse Accessibility score >85
+- Lighthouse Best Practices score >90
+
+**Test Scenarios:**
+```gherkin
+Scenario: Initial load on desktop WiFi
+  Given user on Chrome Desktop with 25 Mbps WiFi
+  When navigating to app root
+  Then Initial bundle <500KB (compressed)
+  And Time to Interactive <3 seconds
+  And First Contentful Paint <1.5s
+  Measured via Lighthouse with 4x CPU throttling
+
+Scenario: Route-based lazy load
+  Given user on app homepage
+  When clicking "Transcripts" navigation
+  Then lazy-loaded transcript bundle fetched
+  And route transition <500ms after bundle cached
+  Measured via Chrome DevTools Network panel
+
+Scenario: Mobile 4G performance
+  Given user on mobile device with 4G connection (10 Mbps)
+  When accessing app for first time
+  Then Time to Interactive <5 seconds
+  And Lighthouse Performance score >85 on Mobile Emulation
+```
 
 ### FR-8: CDN for Static Assets
 
 **Description:** System shall serve audio files via CDN.
 
 **Requirements:**
-- FR-8.1: Upload processed audio to CDN (Cloudflare R2 or similar)
-- FR-8.2: Serve transcriptions and audio files from CDN edge
-- FR-8.3: Cache-Control headers for aggressive caching
-- FR-8.4: CDN purge on file deletion
-- FR-8.5: Fallback to local storage if CDN unavailable
+- FR-8.1: **CDN Provider Specification:**
+  - Primary: Cloudflare R2 (S3-compatible)
+  - Edge locations: 200+ globally
+  - Max file size: 5GB (sufficient for audio)
+  - Upload processed audio to CDN via S3-compatible API
+- FR-8.2: **Cost Structure:**
+  - Storage: $0.015/GB/month (vs S3 $0.023)
+  - Egress: Free (vs S3 $0.09/GB)
+  - Cost estimates (1000 transcriptions/month, avg 50MB):
+    - Storage: 50GB * $0.015 = $0.75/month
+    - Egress: 1000 * 50MB * $0 = $0 (Cloudflare R2)
+    - Total: <$1/month for 1000 transcriptions
+- FR-8.3: **Cache Strategy:**
+  - Serve transcriptions and audio files from CDN edge
+  - TTL: 365 days for immutable audio
+  - Cache-Control: public, max-age=31536000, immutable
+  - Invalidation: DELETE request on file deletion
+  - Purge propagation: <30 seconds globally
+- FR-8.4: **Cache Hit Rate Targets:**
+  - Hourly: >85% (after initial warmup)
+  - Daily: >90%
+  - Weekly: >95%
+  - Measured via Cloudflare Analytics
+- FR-8.5: **Latency Targets (p95):**
+  - Same continent: <50ms
+  - Cross-continent: <100ms
+  - Asia-Pacific: <150ms
+  - Measured from 5 regions: US-East, US-West, EU-West, EU-Central, Asia-Pacific
+- FR-8.6: **Fallback Behavior:**
+  - If CDN unavailable: Serve from local storage (PostgreSQL)
+  - Fallback timeout: 2 seconds
+  - Fallback triggers: 503 error, timeout >5s
+  - Automatic retry after 60 seconds
+- FR-8.7: **CDN Purge:**
+  - Automatic CDN purge on file deletion
+  - Invalidation API integration
+  - Purge verification logging
 
 **Acceptance Criteria:**
-- >90% CDN cache hit rate
-- Audio files served <100ms globally
-- Automatic CDN purge on delete
+- >90% CDN cache hit rate (daily, after initial warmup)
+- Audio files served <100ms globally (p95, cross-continent)
+- <50ms same continent (p95)
+- Automatic CDN purge on delete within 30 seconds
+- Fallback to local storage within 2 seconds if CDN unavailable
+
+**Test Scenarios:**
+```gherkin
+Scenario: CDN cache hit from US-East
+  Given audio file "test.mp3" uploaded and stored in CDN
+  When user requests file from US-East region
+  Then response returned in <50ms (p95)
+  And X-Cache: HIT header present
+  And served from Cloudflare edge
+
+Scenario: CDN fallback on failure
+  Given CDN service unavailable (503 error)
+  When user requests audio file
+  Then request times out after 2 seconds
+  And automatic fallback to PostgreSQL storage
+  And user sees "Degraded performance" notification
+  And CDN retry attempted after 60 seconds
+
+Scenario: CDN purge on deletion
+  Given audio file stored in CDN
+  When user deletes file
+  Then CDN PURGE request sent
+  And file inaccessible from all edges within 30 seconds
+  And database record deleted
+
+Scenario: Geographic latency validation
+  Given audio file "test.mp3" stored in CDN
+  When user requests file from 5 geographic regions
+  Then US-East latency <50ms (p95)
+  And US-West latency <50ms (p95)
+  And EU-West latency <50ms (p95)
+  And EU-Central latency <50ms (p95)
+  And Asia-Pacific latency <150ms (p95)
+```
 
 ### FR-9: Performance Monitoring
 
@@ -281,15 +402,96 @@ Implement an 8-pillar performance optimization strategy:
 **Description:** System shall degrade gracefully if optimizations fail.
 
 **Requirements:**
-- FR-10.1: Fallback to sequential processing if parallel fails
-- FR-10.2: Bypass cache if cache unavailable
-- FR-10.3: Use direct DB if Redis unavailable
-- FR-10.4: Clear error messages for degradation
+- FR-10.1: **Minimum Viable Functionality:**
+  - MANDATORY (always available):
+    - File upload (sequential processing)
+    - Transcription results display
+    - User authentication
+    - Basic navigation
+  - DEGRADED (reduced performance):
+    - Progress updates: polling every 30s (no WebSocket)
+    - Concurrent uploads: max 1 (vs 5)
+    - Caching: bypassed (direct API calls)
+    - Search: basic only (no RAG)
+  - UNAVAILABLE (admin can disable):
+    - Real-time progress
+    - Batch processing
+    - RAG queries
+    - Advanced search
+- FR-10.2: **Fallback Mechanisms:**
+  - Fallback to sequential processing if parallel fails
+  - Bypass cache if cache unavailable
+  - Use direct DB if Redis unavailable
+- FR-10.3: **Notification Specification:**
+  - In-app banner: "Performance mode: Some features unavailable"
+  - Color: Yellow (warning), not red (error)
+  - Dismissible: Yes, with "Don't show again for 1 hour"
+  - Persistence: Session storage (reset on refresh)
+  - Detail: "Learn more" link to status page
+  - Clear error messages for degradation
+- FR-10.4: **Recovery Triggers:**
+  - Health check: Every 30 seconds
+  - Recovery criteria: All systems healthy for 2 minutes
+  - Recovery notification: "Full performance restored"
+  - Auto-retry: Queued jobs process automatically
+- FR-10.5: **State Persistence:**
+  - In-flight jobs: Continue to completion
+  - Failed jobs: Retry after recovery (max 3 attempts)
+  - User preferences: Persisted to localStorage
+  - Draft transcripts: Auto-save to database
+- FR-10.6: **Manual Override:**
+  - Admin endpoint: POST /admin/degradation/override
+  - Parameters: {"mode": "full" | "degraded", "reason": "string"}
+  - Audit log: All overrides logged with user/timestamp
+  - Auto-recovery disabled: When manual override active
+- FR-10.7: **Degraded Mode Performance Targets:**
+  - Sequential processing: 2-3x slower than normal
+  - API latency: +50% (account for single-threading)
+  - Cache bypass: All calls to external API
+  - Queue: Disabled (synchronous processing)
 
 **Acceptance Criteria:**
 - System remains functional during cache/queue failures
-- User informed of degraded mode
-- Automatic recovery when services restored
+- User informed of degraded mode via in-app banner
+- Automatic recovery when services restored (2-minute health window)
+- Manual override capability for admins
+- Degraded mode performance within 2-3x of normal
+
+**Test Scenarios:**
+```gherkin
+Scenario: Redis cache failure - degrade gracefully
+  Given Redis service unavailable (connection refused)
+  When user uploads file for transcription
+  Then cache bypassed
+  And notification displayed: "Cache unavailable, using direct processing"
+  And transcription completes (slower, no error)
+  And cache health check every 30s
+  When Redis recovers
+  Then notification: "Full performance restored"
+  And cache re-enabled for new uploads
+
+Scenario: Manual degradation override
+  Given all systems operational
+  When admin POSTs to /admin/degradation/override
+  And body: {"mode": "degraded", "reason": "Emergency maintenance"}
+  Then system enters degraded mode
+  And users see: "Scheduled maintenance: Some features unavailable"
+  And cache disabled
+  And queue processing paused
+  And override logged to audit trail
+  And auto-recovery disabled
+
+Scenario: Celery queue failure - sequential processing
+  Given Celery workers unavailable
+  When user uploads file for transcription
+  Then sequential processing activated
+  And notification: "Processing in sequential mode - may be slower"
+  And file processes successfully (2-3x slower)
+  And progress updates via polling (every 30s)
+  When Celery workers recover
+  Then automatic recovery after 2-minute health window
+  And notification: "Full performance restored"
+```
 
 ---
 
@@ -645,4 +847,5 @@ HTTP_CONFIG = {
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2026-02-03 | Performance Team | Critical PRD updates based on validation analysis (FR-7, FR-8, FR-10) |
 | 1.0 | 2026-02-03 | Performance Team | Initial PRD |

@@ -727,6 +727,515 @@ class RetryConfig:
         return min(delay, self.max_delay_ms)
 ```
 
+### JobStats
+
+**Immutable:** Yes
+
+**Equality:** By value
+
+**Purpose:** Queue statistics for monitoring
+
+```python
+@dataclass(frozen=True)
+class JobStats:
+    """Job queue statistics"""
+    queued: int
+    processing: int
+    completed: int
+    failed: int
+    total: int
+
+    @property
+    def completion_rate(self) -> float:
+        """Calculate completion rate"""
+        if self.total == 0:
+            return 0.0
+        return self.completed / self.total
+
+    @property
+    def failure_rate(self) -> float:
+        """Calculate failure rate"""
+        if self.total == 0:
+            return 0.0
+        return self.failed / self.total
+
+    @classmethod
+    def from_results(cls, results: List[Dict[str, int]]) -> "JobStats":
+        """Create stats from database query results"""
+        stats = {status: 0 for status in ["QUEUED", "PROCESSING", "COMPLETED", "FAILED"]}
+
+        for row in results:
+            status = row["status"]
+            count = row["count"]
+            stats[status] = count
+
+        total = sum(stats.values())
+
+        return cls(
+            queued=stats["QUEUED"],
+            processing=stats["PROCESSING"],
+            completed=stats["COMPLETED"],
+            failed=stats["FAILED"],
+            total=total
+        )
+```
+
+**TypeScript Equivalent:**
+
+```typescript
+class JobStats {
+  readonly queued: number;
+  readonly processing: number;
+  readonly completed: number;
+  readonly failed: number;
+  readonly total: number;
+
+  constructor(
+    queued: number,
+    processing: number,
+    completed: number,
+    failed: number
+  ) {
+    this.queued = queued;
+    this.processing = processing;
+    this.completed = completed;
+    this.failed = failed;
+    this.total = queued + processing + completed + failed;
+  }
+
+  get completionRate(): number {
+    return this.total > 0 ? this.completed / this.total : 0;
+  }
+
+  get failureRate(): number {
+    return this.total > 0 ? this.failed / this.total : 0;
+  }
+
+  static fromResults(results: Array<{status: string, count: number}>): JobStats {
+    const stats = {
+      QUEUED: 0,
+      PROCESSING: 0,
+      COMPLETED: 0,
+      FAILED: 0
+    };
+
+    for (const row of results) {
+      stats[row.status] = row.count;
+    }
+
+    return new JobStats(
+      stats.QUEUED,
+      stats.PROCESSING,
+      stats.COMPLETED,
+      stats.FAILED
+    );
+  }
+}
+```
+
+---
+
+### ProcessingStrategy
+
+**Immutable:** Yes
+
+**Equality:** By value
+
+**Purpose:** Define how chunks are processed
+
+```python
+@dataclass(frozen=True)
+class ProcessingStrategy:
+    """Strategy for processing chunks"""
+    value: str  # "parallel", "sequential", "adaptive"
+    max_retries: int
+    timeout_ms: int
+
+    PARALLEL: ClassVar[str] = "parallel"
+    SEQUENTIAL: ClassVar[str] = "sequential"
+    ADAPTIVE: ClassVar[str] = "adaptive"
+
+    def __post_init__(self):
+        valid = [self.PARALLEL, self.SEQUENTIAL, self.ADAPTIVE]
+        if self.value not in valid:
+            raise ValueError(f"Strategy must be one of {valid}")
+
+        if self.max_retries < 0:
+            raise ValueError("Max retries must be non-negative")
+
+        if self.timeout_ms <= 0:
+            raise ValueError("Timeout must be positive")
+
+    @classmethod
+    def parallel(
+        cls,
+        max_retries: int = 3,
+        timeout_ms: int = 300000
+    ) -> "ProcessingStrategy":
+        return cls(
+            value=cls.PARALLEL,
+            max_retries=max_retries,
+            timeout_ms=timeout_ms
+        )
+
+    @classmethod
+    def sequential(
+        cls,
+        max_retries: int = 3,
+        timeout_ms: int = 300000
+    ) -> "ProcessingStrategy":
+        return cls(
+            value=cls.SEQUENTIAL,
+            max_retries=max_retries,
+            timeout_ms=timeout_ms
+        )
+
+    @classmethod
+    def adaptive(
+        cls,
+        max_retries: int = 3,
+        timeout_ms: int = 300000
+    ) -> "ProcessingStrategy":
+        return cls(
+            value=cls.ADAPTIVE,
+            max_retries=max_retries,
+            timeout_ms=timeout_ms
+        )
+
+    @property
+    def is_parallel(self) -> bool:
+        return self.value == self.PARALLEL
+
+    @property
+    def is_sequential(self) -> bool:
+        return self.value == self.SEQUENTIAL
+
+    @property
+    def is_adaptive(self) -> bool:
+        return self.value == self.ADAPTIVE
+```
+
+**TypeScript Equivalent:**
+
+```typescript
+class ProcessingStrategy {
+  static readonly PARALLEL = "parallel";
+  static readonly SEQUENTIAL = "sequential";
+  static readonly ADAPTIVE = "adaptive";
+
+  constructor(
+    readonly value: string,
+    readonly maxRetries: number,
+    readonly timeoutMs: number
+  ) {
+    const valid = [ProcessingStrategy.PARALLEL, ProcessingStrategy.SEQUENTIAL, ProcessingStrategy.ADAPTIVE];
+    if (!valid.includes(value)) {
+      throw new Error(`Strategy must be one of ${valid.join(", ")}`);
+    }
+
+    if (maxRetries < 0) {
+      throw new Error("Max retries must be non-negative");
+    }
+
+    if (timeoutMs <= 0) {
+      throw new Error("Timeout must be positive");
+    }
+  }
+
+  static parallel(maxRetries: number = 3, timeoutMs: number = 300000): ProcessingStrategy {
+    return new ProcessingStrategy(ProcessingStrategy.PARALLEL, maxRetries, timeoutMs);
+  }
+
+  static sequential(maxRetries: number = 3, timeoutMs: number = 300000): ProcessingStrategy {
+    return new ProcessingStrategy(ProcessingStrategy.SEQUENTIAL, maxRetries, timeoutMs);
+  }
+
+  static adaptive(maxRetries: number = 3, timeoutMs: number = 300000): ProcessingStrategy {
+    return new ProcessingStrategy(ProcessingStrategy.ADAPTIVE, maxRetries, timeoutMs);
+  }
+
+  get isParallel(): boolean {
+    return this.value === ProcessingStrategy.PARALLEL;
+  }
+
+  get isSequential(): boolean {
+    return this.value === ProcessingStrategy.SEQUENTIAL;
+  }
+
+  get isAdaptive(): boolean {
+    return this.value === ProcessingStrategy.ADAPTIVE;
+  }
+}
+```
+
+---
+
+### MergeStrategy
+
+**Immutable:** Yes
+
+**Equality:** By value
+
+**Purpose:** Define how chunk results are combined
+
+```python
+@dataclass(frozen=True)
+class MergeStrategy:
+    """Strategy for merging chunk results"""
+    value: str  # "timestamp", "overlap", "smart"
+    overlap_seconds: int
+    alignment_threshold_ms: int
+
+    TIMESTAMP: ClassVar[str] = "timestamp"
+    OVERLAP: ClassVar[str] = "overlap"
+    SMART: ClassVar[str] = "smart"
+
+    def __post_init__(self):
+        valid = [self.TIMESTAMP, self.OVERLAP, self.SMART]
+        if self.value not in valid:
+            raise ValueError(f"Strategy must be one of {valid}")
+
+        if self.overlap_seconds < 0:
+            raise ValueError("Overlap must be non-negative")
+
+        if self.alignment_threshold_ms < 0:
+            raise ValueError("Alignment threshold must be non-negative")
+
+    @classmethod
+    def timestamp(
+        cls,
+        overlap_seconds: int = 2,
+        alignment_threshold_ms: int = 500
+    ) -> "MergeStrategy":
+        """Merge by timestamp alignment"""
+        return cls(
+            value=cls.TIMESTAMP,
+            overlap_seconds=overlap_seconds,
+            alignment_threshold_ms=alignment_threshold_ms
+        )
+
+    @classmethod
+    def overlap(
+        cls,
+        overlap_seconds: int = 2,
+        alignment_threshold_ms: int = 500
+    ) -> "MergeStrategy":
+        """Merge with overlap handling"""
+        return cls(
+            value=cls.OVERLAP,
+            overlap_seconds=overlap_seconds,
+            alignment_threshold_ms=alignment_threshold_ms
+        )
+
+    @classmethod
+    def smart(
+        cls,
+        overlap_seconds: int = 2,
+        alignment_threshold_ms: int = 500
+    ) -> "MergeStrategy":
+        """Intelligent merge with content analysis"""
+        return cls(
+            value=cls.SMART,
+            overlap_seconds=overlap_seconds,
+            alignment_threshold_ms=alignment_threshold_ms
+        )
+
+    @property
+    def is_timestamp_based(self) -> bool:
+        return self.value == self.TIMESTAMP
+
+    @property
+    def is_overlap_based(self) -> bool:
+        return self.value == self.OVERLAP
+
+    @property
+    def is_smart(self) -> bool:
+        return self.value == self.SMART
+```
+
+**TypeScript Equivalent:**
+
+```typescript
+class MergeStrategy {
+  static readonly TIMESTAMP = "timestamp";
+  static readonly OVERLAP = "overlap";
+  static readonly SMART = "smart";
+
+  constructor(
+    readonly value: string,
+    readonly overlapSeconds: number,
+    readonly alignmentThresholdMs: number
+  ) {
+    const valid = [MergeStrategy.TIMESTAMP, MergeStrategy.OVERLAP, MergeStrategy.SMART];
+    if (!valid.includes(value)) {
+      throw new Error(`Strategy must be one of ${valid.join(", ")}`);
+    }
+
+    if (overlapSeconds < 0) {
+      throw new Error("Overlap must be non-negative");
+    }
+
+    if (alignmentThresholdMs < 0) {
+      throw new Error("Alignment threshold must be non-negative");
+    }
+  }
+
+  static timestamp(overlapSeconds: number = 2, alignmentThresholdMs: number = 500): MergeStrategy {
+    return new MergeStrategy(MergeStrategy.TIMESTAMP, overlapSeconds, alignmentThresholdMs);
+  }
+
+  static overlap(overlapSeconds: number = 2, alignmentThresholdMs: number = 500): MergeStrategy {
+    return new MergeStrategy(MergeStrategy.OVERLAP, overlapSeconds, alignmentThresholdMs);
+  }
+
+  static smart(overlapSeconds: number = 2, alignmentThresholdMs: number = 500): MergeStrategy {
+    return new MergeStrategy(MergeStrategy.SMART, overlapSeconds, alignmentThresholdMs);
+  }
+
+  get isTimestampBased(): boolean {
+    return this.value === MergeStrategy.TIMESTAMP;
+  }
+
+  get isOverlapBased(): boolean {
+    return this.value === MergeStrategy.OVERLAP;
+  }
+
+  get isSmart(): boolean {
+    return this.value === MergeStrategy.SMART;
+  }
+}
+```
+
+---
+
+### CacheHitResult
+
+**Immutable:** Yes
+
+**Equality:** By value (hit status + level + value)
+
+**Purpose:** Result of cache lookup operation
+
+```python
+from typing import Optional
+from enum import Enum
+
+class CacheLevel(Enum):
+    L1 = "L1"  # In-memory
+    L2 = "L2"  # Redis
+    L3 = "L3"  # PostgreSQL
+
+@dataclass(frozen=True)
+class CacheHitResult:
+    """Result of a cache lookup operation"""
+    hit: bool
+    level: Optional[CacheLevel]
+    value: Optional[CacheValue]
+
+    def __post_init__(self):
+        # If hit is True, level and value must be provided
+        if self.hit and (self.level is None or self.value is None):
+            raise ValueError("Hit results must have level and value")
+
+        # If hit is False, level and value must be None
+        if not self.hit and (self.level is not None or self.value is not None):
+            raise ValueError("Miss results must not have level or value")
+
+    @classmethod
+    def miss(cls) -> "CacheHitResult":
+        """Create a cache miss result"""
+        return cls(hit=False, level=None, value=None)
+
+    @classmethod
+    def hit_l1(cls, value: CacheValue) -> "CacheHitResult":
+        """Create an L1 cache hit result"""
+        return cls(hit=True, level=CacheLevel.L1, value=value)
+
+    @classmethod
+    def hit_l2(cls, value: CacheValue) -> "CacheHitResult":
+        """Create an L2 cache hit result"""
+        return cls(hit=True, level=CacheLevel.L2, value=value)
+
+    @classmethod
+    def hit_l3(cls, value: CacheValue) -> "CacheHitResult":
+        """Create an L3 cache hit result"""
+        return cls(hit=True, level=CacheLevel.L3, value=value)
+
+    @property
+    def latency_tier(self) -> int:
+        """Get latency tier (1=L1 fastest, 3=L3 slowest)"""
+        if not self.hit:
+            return 0
+        if self.level == CacheLevel.L1:
+            return 1
+        elif self.level == CacheLevel.L2:
+            return 2
+        else:
+            return 3
+
+    @property
+    def was_promoted(self) -> bool:
+        """Check if value was promoted from lower cache level"""
+        return self.hit and self.level in [CacheLevel.L2, CacheLevel.L3]
+```
+
+**TypeScript Equivalent:**
+
+```typescript
+enum CacheLevel {
+  L1 = "L1",
+  L2 = "L2",
+  L3 = "L3"
+}
+
+class CacheHitResult {
+  private constructor(
+    readonly hit: boolean,
+    readonly level?: CacheLevel,
+    readonly value?: CacheValue
+  ) {
+    if (hit && (level === undefined || value === undefined)) {
+      throw new Error("Hit results must have level and value");
+    }
+
+    if (!hit && (level !== undefined || value !== undefined)) {
+      throw new Error("Miss results must not have level or value");
+    }
+  }
+
+  static miss(): CacheHitResult {
+    return new CacheHitResult(false);
+  }
+
+  static hitL1(value: CacheValue): CacheHitResult {
+    return new CacheHitResult(true, CacheLevel.L1, value);
+  }
+
+  static hitL2(value: CacheValue): CacheHitResult {
+    return new CacheHitResult(true, CacheLevel.L2, value);
+  }
+
+  static hitL3(value: CacheValue): CacheHitResult {
+    return new CacheHitResult(true, CacheLevel.L3, value);
+  }
+
+  get latencyTier(): number {
+    if (!this.hit) return 0;
+
+    switch (this.level) {
+      case CacheLevel.L1: return 1;
+      case CacheLevel.L2: return 2;
+      case CacheLevel.L3: return 3;
+      default: return 0;
+    }
+  }
+
+  get wasPromoted(): boolean {
+    return this.hit && (this.level === CacheLevel.L2 || this.level === CacheLevel.L3);
+  }
+}
+```
+
 ---
 
 ## Entity Relationships

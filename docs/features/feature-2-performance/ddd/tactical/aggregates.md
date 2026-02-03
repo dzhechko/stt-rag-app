@@ -552,6 +552,852 @@ class MetricsCollector(AggregateRoot):
 
 ---
 
+### 5. ConnectionPool Aggregate
+
+**Responsibility:** Manage database connection pool lifecycle and health.
+
+**Aggregate Root:** `ConnectionPool`
+
+**Entities:**
+- `Connection` - Individual database connection
+
+**Value Objects:**
+- `PoolSize` - Min/max pool configuration
+- `PoolStatus` - Healthy/Unhealthy/Draining
+- `ConnectionStats` - Active/idle connection counts
+
+**Invariants:**
+1. Active connections never exceed max size
+2. Minimum connections always available
+3. Failed connections are recycled
+4. Pool maintains health check interval
+
+**Repository:** `ConnectionPoolRepository`
+
+```python
+class ConnectionPool(AggregateRoot):
+    """Aggregate root for database connection pool"""
+
+    def __init__(
+        self,
+        pool_id: PoolId,
+        min_size: PoolSize,
+        max_size: PoolSize
+    ):
+        self.pool_id = pool_id
+        self.min_size = min_size
+        self.max_size = max_size
+        self.connections: Dict[ConnectionId, Connection] = {}
+        self.status = PoolStatus.INITIALIZING
+
+    def initialize(self) -> None:
+        """Initialize pool with minimum connections"""
+        for _ in range(self.min_size.value):
+            conn_id = ConnectionId.generate()
+            conn = Connection(id=conn_id, pool_id=self.pool_id)
+            self.connections[conn_id] = conn
+
+        self.status = PoolStatus.HEALTHY
+        self._publish_event(
+            PoolInitialized(
+                pool_id=self.pool_id,
+                initial_size=len(self.connections)
+            )
+        )
+
+    def acquire(self, timeout: timedelta) -> Optional[Connection]:
+        """Acquire connection from pool"""
+        # Find idle connection
+        for conn in self.connections.values():
+            if conn.is_idle():
+                conn.acquire()
+                self._publish_event(
+                    ConnectionAcquired(
+                        connection_id=conn.id,
+                        pool_id=self.pool_id
+                    )
+                )
+                return conn
+
+        # Create new connection if under max
+        if len(self.connections) < self.max_size.value:
+            conn_id = ConnectionId.generate()
+            conn = Connection(id=conn_id, pool_id=self.pool_id)
+            conn.acquire()
+            self.connections[conn_id] = conn
+
+            self._publish_event(
+                ConnectionCreated(
+                    connection_id=conn_id,
+                    pool_id=self.pool_id
+                )
+            )
+            return conn
+
+        # Pool exhausted
+        return None
+
+    def release(self, connection_id: ConnectionId) -> None:
+        """Release connection back to pool"""
+        conn = self.connections.get(connection_id)
+        if conn and conn.is_acquired():
+            conn.release()
+
+            self._publish_event(
+                ConnectionReleased(
+                    connection_id=connection_id,
+                    pool_id=self.pool_id
+                )
+            )
+
+    def remove_failed(self, connection_id: ConnectionId) -> None:
+        """Remove failed connection from pool"""
+        if connection_id in self.connections:
+            del self.connections[connection_id]
+
+            self._publish_event(
+                ConnectionFailed(
+                    connection_id=connection_id,
+                    pool_id=self.pool_id
+                )
+            )
+
+    def get_stats(self) -> ConnectionStats:
+        """Get pool statistics"""
+        active = sum(1 for c in self.connections.values() if c.is_acquired())
+        idle = sum(1 for c in self.connections.values() if c.is_idle())
+
+        return ConnectionStats(
+            total=len(self.connections),
+            active=active,
+            idle=idle,
+            utilization=active / len(self.connections) if self.connections else 0
+        )
+
+    def scale_to(self, target_size: int) -> None:
+        """Scale pool to target size"""
+        target_size = max(self.min_size.value, min(target_size, self.max_size.value))
+        current_size = len(self.connections)
+
+        if target_size > current_size:
+            # Add connections
+            for _ in range(target_size - current_size):
+                conn_id = ConnectionId.generate()
+                conn = Connection(id=conn_id, pool_id=self.pool_id)
+                self.connections[conn_id] = conn
+        elif target_size < current_size:
+            # Remove idle connections
+            idle_conns = [
+                c for c in self.connections.values()
+                if c.is_idle()
+            ][:current_size - target_size]
+
+            for conn in idle_conns:
+                del self.connections[conn.id]
+
+        self._publish_event(
+            PoolResized(
+                pool_id=self.pool_id,
+                old_size=current_size,
+                new_size=len(self.connections)
+            )
+        )
+```
+
+**TypeScript Equivalent:**
+
+```typescript
+class ConnectionPool extends AggregateRoot {
+  private connections: Map<ConnectionId, Connection> = new Map();
+  private status: PoolStatus = PoolStatus.Initializing;
+
+  constructor(
+    private poolId: PoolId,
+    private minSize: PoolSize,
+    private maxSize: PoolSize
+  ) {
+    super();
+  }
+
+  initialize(): void {
+    for (let i = 0; i < this.minSize.value; i++) {
+      const connId = ConnectionId.generate();
+      const conn = new Connection(connId, this.poolId);
+      this.connections.set(connId, conn);
+    }
+
+    this.status = PoolStatus.Healthy;
+    this.publishEvent(new PoolInitialized(this.poolId, this.connections.size));
+  }
+
+  acquire(timeout: TimeSpan): Connection | null {
+    // Find idle connection
+    for (const conn of this.connections.values()) {
+      if (conn.isIdle()) {
+        conn.acquire();
+        this.publishEvent(new ConnectionAcquired(conn.id, this.poolId));
+        return conn;
+      }
+    }
+
+    // Create new connection if under max
+    if (this.connections.size < this.maxSize.value) {
+      const connId = ConnectionId.generate();
+      const conn = new Connection(connId, this.poolId);
+      conn.acquire();
+      this.connections.set(connId, conn);
+
+      this.publishEvent(new ConnectionCreated(connId, this.poolId));
+      return conn;
+    }
+
+    return null;
+  }
+
+  release(connectionId: ConnectionId): void {
+    const conn = this.connections.get(connectionId);
+    if (conn && conn.isAcquired()) {
+      conn.release();
+      this.publishEvent(new ConnectionReleased(connectionId, this.poolId));
+    }
+  }
+
+  removeFailed(connectionId: ConnectionId): void {
+    if (this.connections.has(connectionId)) {
+      this.connections.delete(connectionId);
+      this.publishEvent(new ConnectionFailed(connectionId, this.poolId));
+    }
+  }
+
+  getStats(): ConnectionStats {
+    let active = 0;
+    let idle = 0;
+
+    for (const conn of this.connections.values()) {
+      if (conn.isAcquired()) active++;
+      else if (conn.isIdle()) idle++;
+    }
+
+    return {
+      total: this.connections.size,
+      active,
+      idle,
+      utilization: this.connections.size > 0 ? active / this.connections.size : 0
+    };
+  }
+
+  scaleTo(targetSize: number): void {
+    const clampedSize = Math.max(
+      this.minSize.value,
+      Math.min(targetSize, this.maxSize.value)
+    );
+    const currentSize = this.connections.size;
+
+    if (clampedSize > currentSize) {
+      for (let i = 0; i < clampedSize - currentSize; i++) {
+        const connId = ConnectionId.generate();
+        const conn = new Connection(connId, this.poolId);
+        this.connections.set(connId, conn);
+      }
+    } else if (clampedSize < currentSize) {
+      const idleConns = Array.from(this.connections.values())
+        .filter(c => c.isIdle())
+        .slice(0, currentSize - clampedSize);
+
+      for (const conn of idleConns) {
+        this.connections.delete(conn.id);
+      }
+    }
+
+    this.publishEvent(new PoolResized(this.poolId, currentSize, this.connections.size));
+  }
+}
+```
+
+---
+
+### 6. APIConnection Aggregate
+
+**Responsibility:** Manage HTTP/2 connection pool for external APIs.
+
+**Aggregate Root:** `APIConnection`
+
+**Entities:**
+- `HTTP2Connection` - Individual HTTP/2 connection
+
+**Value Objects:**
+- `APIEndpoint` - API URL and configuration
+- `RateLimit` - Request rate limit configuration
+- `ConnectionHealth` - Health status metrics
+
+**Invariants:**
+1. Rate limits are never exceeded
+2. Maximum concurrent streams per connection
+3. Failed connections trigger backoff
+4. Connection reuse within keep-alive period
+
+**Repository:** `APIConnectionRepository`
+
+```python
+class APIConnection(AggregateRoot):
+    """Aggregate root for HTTP/2 API connection pool"""
+
+    def __init__(
+        self,
+        endpoint: APIEndpoint,
+        rate_limit: RateLimit,
+        max_streams: int = 100
+    ):
+        self.endpoint = endpoint
+        self.rate_limit = rate_limit
+        self.max_streams = max_streams
+        self.connections: List[HTTP2Connection] = []
+        self.request_queue: Queue[APIRequest] = Queue()
+
+    def add_connection(self) -> ConnectionId:
+        """Add new HTTP/2 connection to pool"""
+        conn_id = ConnectionId.generate()
+        conn = HTTP2Connection(
+            id=conn_id,
+            endpoint=self.endpoint,
+            max_streams=self.max_streams
+        )
+        self.connections.append(conn)
+
+        self._publish_event(
+            APIConnectionCreated(
+                connection_id=conn_id,
+                endpoint=str(self.endpoint)
+            )
+        )
+
+        return conn_id
+
+    async def execute_request(
+        self,
+        request: APIRequest
+    ) -> APIResponse:
+        """Execute API request respecting rate limits"""
+        # Check rate limit
+        if not self._can_make_request():
+            await self._wait_for_rate_limit()
+
+        # Find connection with available streams
+        conn = self._get_available_connection()
+        if not conn:
+            # Add new connection if at limit
+            conn = self._add_connection()
+
+        try:
+            response = await conn.execute(request)
+
+            self._publish_event(
+                APIRequestCompleted(
+                    request_id=request.id,
+                    connection_id=conn.id,
+                    status_code=response.status_code
+                )
+            )
+
+            return response
+
+        except APIError as e:
+            self._handle_error(conn, e)
+            raise
+
+    def _can_make_request(self) -> bool:
+        """Check if request respects rate limit"""
+        now = datetime.utcnow()
+        window_start = now - timedelta(seconds=60)
+
+        recent_requests = [
+            r for r in self.connections[0].completed_requests
+            if r.completed_at > window_start
+        ] if self.connections else []
+
+        return len(recent_requests) < self.rate_limit.requests_per_minute
+
+    async def _wait_for_rate_limit(self) -> None:
+        """Wait until rate limit allows requests"""
+        oldest = self.connections[0].completed_requests[0].completed_at
+        wait_time = timedelta(seconds=60) - (datetime.utcnow() - oldest)
+        await asyncio.sleep(wait_time.total_seconds())
+
+    def _get_available_connection(self) -> Optional[HTTP2Connection]:
+        """Get connection with available stream slots"""
+        for conn in self.connections:
+            if conn.active_streams < conn.max_streams:
+                return conn
+        return None
+
+    def _handle_error(
+        self,
+        conn: HTTP2Connection,
+        error: APIError
+    ) -> None:
+        """Handle connection error"""
+        if error.is_transient():
+            # Back off on transient errors
+            conn.backoff_until = datetime.utcnow() + timedelta(seconds=30)
+        else:
+            # Remove failed connection
+            self.connections.remove(conn)
+
+        self._publish_event(
+            APIConnectionError(
+                connection_id=conn.id,
+                error_type=error.type,
+                is_transient=error.is_transient()
+            )
+        )
+
+    def get_stats(self) -> ConnectionHealth:
+        """Get connection pool health stats"""
+        total_streams = sum(c.active_streams for c in self.connections)
+        available_streams = sum(
+            c.max_streams - c.active_streams
+            for c in self.connections
+        )
+
+        return ConnectionHealth(
+            total_connections=len(self.connections),
+            active_streams=total_streams,
+            available_streams=available_streams,
+            utilization=total_streams / (total_streams + available_streams)
+            if (total_streams + available_streams) > 0 else 0
+        )
+```
+
+**TypeScript Equivalent:**
+
+```typescript
+class APIConnection extends AggregateRoot {
+  private connections: HTTP2Connection[] = [];
+  private requestQueue: APIRequest[] = [];
+
+  constructor(
+    private endpoint: APIEndpoint,
+    private rateLimit: RateLimit,
+    private maxStreams: number = 100
+  ) {
+    super();
+  }
+
+  addConnection(): ConnectionId {
+    const connId = ConnectionId.generate();
+    const conn = new HTTP2Connection(connId, this.endpoint, this.maxStreams);
+    this.connections.push(conn);
+
+    this.publishEvent(new APIConnectionCreated(connId, this.endpoint.toString()));
+
+    return connId;
+  }
+
+  async executeRequest(request: APIRequest): Promise<APIResponse> {
+    if (!this.canMakeRequest()) {
+      await this.waitForRateLimit();
+    }
+
+    let conn = this.getAvailableConnection();
+    if (!conn) {
+      conn = this.addConnection();
+    }
+
+    try {
+      const response = await conn.execute(request);
+
+      this.publishEvent(new APIRequestCompleted(
+        request.id,
+        conn.id,
+        response.statusCode
+      ));
+
+      return response;
+
+    } catch (error) {
+      this.handleError(conn, error as APIError);
+      throw error;
+    }
+  }
+
+  private canMakeRequest(): boolean {
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - 60000);
+
+    const recentRequests = this.connections[0]?.completedRequests.filter(
+      r => r.completedAt > windowStart
+    ) || [];
+
+    return recentRequests.length < this.rateLimit.requestsPerMinute;
+  }
+
+  private async waitForRateLimit(): Promise<void> {
+    const oldest = this.connections[0].completedRequests[0].completedAt;
+    const waitTime = 60000 - (Date.now() - oldest.getTime());
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+
+  private getAvailableConnection(): HTTP2Connection | undefined {
+    return this.connections.find(c => c.activeStreams < c.maxStreams);
+  }
+
+  private handleError(conn: HTTP2Connection, error: APIError): void {
+    if (error.isTransient()) {
+      const backoffUntil = new Date(Date.now() + 30000);
+      conn.backoffUntil = backoffUntil;
+    } else {
+      const index = this.connections.indexOf(conn);
+      this.connections.splice(index, 1);
+    }
+
+    this.publishEvent(new APIConnectionError(
+      conn.id,
+      error.type,
+      error.isTransient()
+    ));
+  }
+
+  getStats(): ConnectionHealth {
+    const totalStreams = this.connections.reduce(
+      (sum, c) => sum + c.activeStreams, 0
+    );
+    const availableStreams = this.connections.reduce(
+      (sum, c) => sum + (c.maxStreams - c.activeStreams), 0
+    );
+
+    return {
+      totalConnections: this.connections.length,
+      activeStreams: totalStreams,
+      availableStreams,
+      utilization: (totalStreams + availableStreams) > 0
+        ? totalStreams / (totalStreams + availableStreams)
+        : 0
+    };
+  }
+}
+```
+
+---
+
+### 7. WorkerNode Aggregate
+
+**Responsibility:** Manage worker node registration and job assignment.
+
+**Aggregate Root:** `WorkerNode`
+
+**Entities:**
+- `WorkerJob` - Job assigned to worker
+
+**Value Objects:**
+- `WorkerCapabilities` - Supported job types
+- `WorkerStatus` - Active/Idle/Offline/Draining
+- `WorkerLoad` - Current load metrics
+
+**Invariants:**
+1. Worker only processes jobs it supports
+2. Maximum concurrent jobs per worker
+3. Heartbeat timeout marks worker offline
+4. Draining workers receive no new jobs
+
+**Repository:** `WorkerNodeRepository`
+
+```python
+class WorkerNode(AggregateRoot):
+    """Aggregate root for worker node management"""
+
+    def __init__(
+        self,
+        worker_id: WorkerId,
+        capabilities: WorkerCapabilities,
+        max_concurrent_jobs: int = 5
+    ):
+        self.worker_id = worker_id
+        self.capabilities = capabilities
+        self.max_concurrent_jobs = max_concurrent_jobs
+        self.jobs: Dict[JobId, WorkerJob] = {}
+        self.status = WorkerStatus.IDLE
+        self.last_heartbeat = datetime.utcnow()
+
+    def register(self) -> None:
+        """Register worker node"""
+        self.status = WorkerStatus.IDLE
+        self.last_heartbeat = datetime.utcnow()
+
+        self._publish_event(
+            WorkerRegistered(
+                worker_id=self.worker_id,
+                capabilities=self.capabilities
+            )
+        )
+
+    def assign_job(self, job: Job) -> bool:
+        """Assign job to worker if capacity available"""
+        if not self._can_accept_job(job):
+            return False
+
+        worker_job = WorkerJob(
+            id=JobId.generate(),
+            worker_id=self.worker_id,
+            job_id=job.id,
+            job_type=job.type
+        )
+        self.jobs[job.id] = worker_job
+
+        if len(self.jobs) >= self.max_concurrent_jobs:
+            self.status = WorkerStatus.ACTIVE
+
+        self._publish_event(
+            JobAssignedToWorker(
+                job_id=job.id,
+                worker_id=self.worker_id
+            )
+        )
+
+        return True
+
+    def complete_job(self, job_id: JobId, result: JobResult) -> None:
+        """Mark job as completed"""
+        if job_id in self.jobs:
+            job = self.jobs[job_id]
+            job.complete(result)
+
+            # Remove from active jobs
+            del self.jobs[job_id]
+
+            if not self.jobs:
+                self.status = WorkerStatus.IDLE
+
+            self._publish_event(
+                JobCompletedByWorker(
+                    job_id=job_id,
+                    worker_id=self.worker_id,
+                    result=result
+                )
+            )
+
+    def fail_job(self, job_id: JobId, error: str) -> None:
+        """Mark job as failed"""
+        if job_id in self.jobs:
+            job = self.jobs[job_id]
+            job.fail(error)
+
+            # Remove from active jobs
+            del self.jobs[job_id]
+
+            if not self.jobs:
+                self.status = WorkerStatus.IDLE
+
+            self._publish_event(
+                JobFailedByWorker(
+                    job_id=job_id,
+                    worker_id=self.worker_id,
+                    error=error
+                )
+            )
+
+    def update_heartbeat(self) -> None:
+        """Update worker heartbeat"""
+        self.last_heartbeat = datetime.utcnow()
+
+        if self.status == WorkerStatus.OFFLINE:
+            self.status = WorkerStatus.IDLE
+            self._publish_event(
+                WorkerCameOnline(
+                    worker_id=self.worker_id
+                )
+            )
+
+    def check_timeout(self, timeout_seconds: int = 300) -> bool:
+        """Check if worker has timed out"""
+        timeout = timedelta(seconds=timeout_seconds)
+        if datetime.utcnow() - self.last_heartbeat > timeout:
+            if self.status != WorkerStatus.OFFLINE:
+                self.status = WorkerStatus.OFFLINE
+
+                self._publish_event(
+                    WorkerWentOffline(
+                        worker_id=self.worker_id,
+                        active_jobs=list(self.jobs.keys())
+                    )
+                )
+
+            return True
+
+        return False
+
+    def start_draining(self) -> None:
+        """Start graceful shutdown (no new jobs)"""
+        self.status = WorkerStatus.DRAINING
+
+        self._publish_event(
+            WorkerDrainingStarted(
+                worker_id=self.worker_id,
+                active_jobs=len(self.jobs)
+            )
+        )
+
+    def _can_accept_job(self, job: Job) -> bool:
+        """Check if worker can accept job"""
+        if self.status in [WorkerStatus.OFFLINE, WorkerStatus.DRAINING]:
+            return False
+
+        if len(self.jobs) >= self.max_concurrent_jobs:
+            return False
+
+        if job.type not in self.capabilities.supported_types:
+            return False
+
+        return True
+
+    def get_load(self) -> WorkerLoad:
+        """Get current worker load"""
+        return WorkerLoad(
+            active_jobs=len(self.jobs),
+            max_jobs=self.max_concurrent_jobs,
+            utilization=len(self.jobs) / self.max_concurrent_jobs,
+            status=self.status
+        )
+```
+
+**TypeScript Equivalent:**
+
+```typescript
+class WorkerNode extends AggregateRoot {
+  private jobs: Map<JobId, WorkerJob> = new Map();
+  private status: WorkerStatus = WorkerStatus.Idle;
+  private lastHeartbeat: Date = new Date();
+
+  constructor(
+    private workerId: WorkerId,
+    private capabilities: WorkerCapabilities,
+    private maxConcurrentJobs: number = 5
+  ) {
+    super();
+  }
+
+  register(): void {
+    this.status = WorkerStatus.Idle;
+    this.lastHeartbeat = new Date();
+
+    this.publishEvent(new WorkerRegistered(this.workerId, this.capabilities));
+  }
+
+  assignJob(job: Job): boolean {
+    if (!this.canAcceptJob(job)) return false;
+
+    const workerJob = new WorkerJob(
+      JobId.generate(),
+      this.workerId,
+      job.id,
+      job.type
+    );
+    this.jobs.set(job.id, workerJob);
+
+    if (this.jobs.size >= this.maxConcurrentJobs) {
+      this.status = WorkerStatus.Active;
+    }
+
+    this.publishEvent(new JobAssignedToWorker(job.id, this.workerId));
+
+    return true;
+  }
+
+  completeJob(jobId: JobId, result: JobResult): void {
+    const job = this.jobs.get(jobId);
+    if (job) {
+      job.complete(result);
+      this.jobs.delete(jobId);
+
+      if (this.jobs.size === 0) {
+        this.status = WorkerStatus.Idle;
+      }
+
+      this.publishEvent(new JobCompletedByWorker(jobId, this.workerId, result));
+    }
+  }
+
+  failJob(jobId: JobId, error: string): void {
+    const job = this.jobs.get(jobId);
+    if (job) {
+      job.fail(error);
+      this.jobs.delete(jobId);
+
+      if (this.jobs.size === 0) {
+        this.status = WorkerStatus.Idle;
+      }
+
+      this.publishEvent(new JobFailedByWorker(jobId, this.workerId, error));
+    }
+  }
+
+  updateHeartbeat(): void {
+    this.lastHeartbeat = new Date();
+
+    if (this.status === WorkerStatus.Offline) {
+      this.status = WorkerStatus.Idle;
+      this.publishEvent(new WorkerCameOnline(this.workerId));
+    }
+  }
+
+  checkTimeout(timeoutSeconds: number = 300): boolean {
+    const timeout = timeoutSeconds * 1000;
+    const now = Date.now();
+
+    if (now - this.lastHeartbeat.getTime() > timeout) {
+      if (this.status !== WorkerStatus.Offline) {
+        this.status = WorkerStatus.Offline;
+
+        this.publishEvent(new WorkerWentOffline(
+          this.workerId,
+          Array.from(this.jobs.keys())
+        ));
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  startDraining(): void {
+    this.status = WorkerStatus.Draining;
+
+    this.publishEvent(new WorkerDrainingStarted(
+      this.workerId,
+      this.jobs.size
+    ));
+  }
+
+  private canAcceptJob(job: Job): boolean {
+    if (this.status === WorkerStatus.Offline ||
+        this.status === WorkerStatus.Draining) {
+      return false;
+    }
+
+    if (this.jobs.size >= this.maxConcurrentJobs) {
+      return false;
+    }
+
+    if (!this.capabilities.supportedTypes.includes(job.type)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  getLoad(): WorkerLoad {
+    return {
+      activeJobs: this.jobs.size,
+      maxJobs: this.maxConcurrentJobs,
+      utilization: this.jobs.size / this.maxConcurrentJobs,
+      status: this.status
+    };
+  }
+}
+```
+
+---
+
 ## Aggregate Relationships
 
 ```
@@ -560,28 +1406,50 @@ class MetricsCollector(AggregateRoot):
 │  Transcript | AudioFile | ProcessingJob | Summary | RAGSession  │
 └────────────────────────────┬────────────────────────────────────┘
                              │
-        ┌────────────────────┼────────────────────┐
-        │                    │                    │
-┌───────▼────────┐  ┌────────▼────────┐  ┌───────▼────────┐
-│ JobQueue       │  │ CacheManager    │  │ ParallelProc.  │
-│ Aggregate      │  │ Aggregate       │  │ Aggregate      │
-│                │  │                 │  │                │
-│ - Job          │  │ - CacheEntry    │  │ - Processing   │
-│ - JobAttempt   │  │ - CacheLevel    │  │   Task         │
-│                │  │                 │  │ - ChunkResult  │
-└────────────────┘  └─────────────────┘  └────────────────┘
-        │                    │                    │
-        └────────────────────┼────────────────────┘
-                             │
-                             ▼
-                   ┌─────────────────────┐
-                   │ MetricsCollector    │
-                   │ Aggregate           │
-                   │                     │
-                   │ - MetricSeries      │
-                   │ - AlertRule        │
-                   └─────────────────────┘
+        ┌────────────────────┼────────────────────┬──────────────┐
+        │                    │                    │              │
+┌───────▼────────┐  ┌────────▼────────┐  ┌───────▼────────┐  ┌──▼─────────────┐
+│ JobQueue       │  │ CacheManager    │  │ ParallelProc.  │  │ ConnectionPool  │
+│ Aggregate      │  │ Aggregate       │  │ Aggregate      │  │ Aggregate       │
+│                │  │                 │  │                │  │                 │
+│ - Job          │  │ - CacheEntry    │  │ - Processing   │  │ - Connection    │
+│ - JobAttempt   │  │ - CacheLevel    │  │   Task         │  │ - PoolSize     │
+│                │  │                 │  │ - ChunkResult  │  │ - PoolStatus   │
+└───────┬────────┘  └────────┬────────┘  └───────┬────────┘  └────────┬────────┘
+        │                    │                    │                      │
+        │           ┌────────▼───────────────────▼───────────────┐      │
+        │           │                                           │      │
+        │           │         APIConnection Aggregate            │      │
+        │           │         - HTTP2Connection                 │      │
+        │           │         - RateLimit                       │      │
+        │           │                                           │      │
+        │           └───────────────────────────────────────────┘      │
+        │                    │                                     │
+        └────────────────────┼────────────────────┬────────────────┘
+                             │                    │
+                             ▼                    ▼
+                   ┌─────────────────────┐  ┌─────────────┐
+                   │ MetricsCollector    │  │ WorkerNode  │
+                   │ Aggregate           │  │ Aggregate   │
+                   │                     │  │             │
+                   │ - MetricSeries      │  │ - WorkerJob │
+                   │ - AlertRule        │  │ - Load      │
+                   └─────────────────────┘  └─────────────┘
 ```
+
+---
+
+## Aggregate Context Mapping
+
+| Aggregate | Context | Primary Storage | Event Publisher |
+|-----------|---------|-----------------|-----------------|
+| JobQueue | Queue | PostgreSQL + Redis | JobQueued, JobStarted, JobCompleted |
+| WorkerNode | Queue | Redis | WorkerRegistered, JobAssignedToWorker |
+| CacheManager | Caching | Memory + Redis + PG | CacheEntryCreated, CacheInvalidated |
+| ParallelProcessor | Processing | PostgreSQL | ChunkProcessingStarted, FileProcessingCompleted |
+| MetricsCollector | Monitoring | Prometheus | MetricRecorded, AlertTriggered |
+| ConnectionPool | Database | Connection Pool | PoolInitialized, ConnectionAcquired |
+| APIConnection | External | HTTP/2 Pool | APIConnectionCreated, APIRequestCompleted |
 
 ---
 
