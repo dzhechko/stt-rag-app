@@ -1,0 +1,359 @@
+// Pseudocode: Export Format Conversion Algorithms
+// File: export-conversion.pseudo
+// Context: Export Bounded Context
+// Aggregates: ExportJob, ExportFormat
+
+//========================================
+// VALUE OBJECT: Timecode
+//========================================
+VALUE OBJECT Timecode
+    seconds: Float
+    format: Enum // SRT, VTT, JSON
+
+    FUNCTION toSRT() -> String:
+        hours = FLOOR(seconds / 3600)
+        minutes = FLOOR((seconds MOD 3600) / 60)
+        secs = FLOOR(seconds MOD 60)
+        millis = ROUND((seconds MOD 1) * 1000)
+
+        RETURN FORMAT("{:02d}:{:02d}:{:02d},{:03d}", hours, minutes, secs, millis)
+    END FUNCTION
+
+    FUNCTION toVTT() -> String:
+        hours = FLOOR(seconds / 3600)
+        minutes = FLOOR((seconds MOD 3600) / 60)
+        secs = FLOOR(seconds MOD 60)
+        millis = ROUND((seconds MOD 1) * 1000)
+
+        RETURN FORMAT("{:02d}:{:02d}:{:02d}.{:03d}", hours, minutes, secs, millis)
+    END FUNCTION
+
+    FUNCTION toJSON() -> Float:
+        RETURN seconds
+    END FUNCTION
+END VALUE OBJECT
+
+//========================================
+// VALUE OBJECT: ExportOptions
+//========================================
+VALUE OBJECT ExportOptions
+    includeTimestamps: Boolean = TRUE
+    includeSpeakers: Boolean = FALSE
+    includeMetadata: Boolean = FALSE
+    customTemplate: String = NULL
+END VALUE OBJECT
+
+//========================================
+// AGGREGATE: ExportJob
+//========================================
+AGGREGATE ExportJob
+
+    STATE:
+        id: ExportJobId
+        transcriptId: TranscriptId
+        format: ExportFormat
+        options: ExportOptions
+        status: ExportStatus // PENDING, PROCESSING, COMPLETED, FAILED
+        fileUrl: String
+        createdAt: DateTime
+        completedAt: DateTime
+    END STATE
+
+    //========================================
+    // COMMAND: Create Export Job
+    //========================================
+    FUNCTION create(
+        transcriptId: TranscriptId,
+        format: ExportFormat,
+        options: ExportOptions
+    ) -> ExportJobId:
+
+        // Pre-conditions
+        VALIDATE transcriptId IS NOT NULL
+        VALIDATE format IS SUPPORTED
+
+        // Create export job
+        this.id = GENERATE_UUID()
+        this.transcriptId = transcriptId
+        this.format = format
+        this.options = options
+        this.status = PENDING
+        this.createdAt = NOW()
+
+        // Emit event
+        EMIT ExportJobCreatedEvent(
+            exportJobId: this.id,
+            transcriptId: transcriptId,
+            format: format,
+            options: options
+        )
+
+        RETURN this.id
+    END FUNCTION
+
+    //========================================
+    // COMMAND: Process Export
+    //========================================
+    FUNCTION process(transcript: Transcript) -> String:
+
+        // Pre-conditions
+        VALIDATE this.status == PENDING
+        VALIDATE transcript.id == this.transcriptId
+
+        // Update status
+        this.status = PROCESSING
+
+        TRY:
+            // Select converter based on format
+            IF this.format == SRT THEN
+                content = this.convertToSRT(transcript)
+            ELSE IF this.format == VTT THEN
+                content = this.convertToVTT(transcript)
+            ELSE IF this.format == JSON THEN
+                content = this.convertToJSON(transcript)
+            ELSE IF this.format == TXT THEN
+                content = this.convertToTXT(transcript)
+            ELSE IF this.format == DOCX THEN
+                content = this.convertToDOCX(transcript)
+            END IF
+
+            // Store file
+            this.fileUrl = storageService.save(content, this.format)
+            this.status = COMPLETED
+            this.completedAt = NOW()
+
+            // Emit event
+            EMIT ExportCompletedEvent(
+                exportJobId: this.id,
+                transcriptId: this.transcriptId,
+                format: this.format,
+                fileUrl: this.fileUrl
+            )
+
+        CATCH ConversionError AS e:
+            this.status = FAILED
+            EMIT ExportFailedEvent(
+                exportJobId: this.id,
+                error: e.message
+            )
+            THROW e
+        END TRY
+
+        RETURN this.fileUrl
+    END FUNCTION
+
+    //========================================
+    // PRIVATE: Convert to SRT Format
+    //========================================
+    FUNCTION convertToSRT(transcript: Transcript) -> String:
+
+        lines = EMPTY_LIST
+
+        FOR EACH segment IN transcript.segments ORDER BY sequenceNumber:
+            // Sequence number
+            lines.APPEND(segment.sequenceNumber)
+
+            // Timecode: START --> END
+            startTime = Timecode(segment.startTime, SRT).toSRT()
+            endTime = Timecode(segment.endTime, SRT).toSRT()
+            lines.APPEND(FORMAT("{} --> {}", startTime, endTime))
+
+            // Text with optional speaker label
+            text = segment.text
+            IF this.options.includeSpeakers AND segment.speakerId IS NOT NULL THEN
+                text = FORMAT("[{}] {}", segment.speakerId, text)
+            END IF
+            lines.APPEND(text)
+
+            // Blank line separator
+            lines.APPEND("")
+        END FOR
+
+        RETURN JOIN(lines, "\n")
+    END FUNCTION
+
+    //========================================
+    // PRIVATE: Convert to VTT Format
+    //========================================
+    FUNCTION convertToVTT(transcript: Transcript) -> String:
+
+        lines = EMPTY_LIST
+        lines.APPEND("WEBVTT")
+        lines.APPEND("")
+
+        FOR EACH segment IN transcript.segments ORDER BY sequenceNumber:
+
+            // Timecode: START --> END
+            startTime = Timecode(segment.startTime, VTT).toVTT()
+            endTime = Timecode(segment.endTime, VTT).toVTT()
+            lines.APPEND(FORMAT("{} --> {}", startTime, endTime))
+
+            // Text with optional speaker tag
+            text = segment.text
+            IF this.options.includeSpeakers AND segment.speakerId IS NOT NULL THEN
+                text = FORMAT("<{}>{}", segment.speakerId, text)
+            END IF
+            lines.APPEND(text)
+
+            // Blank line separator
+            lines.APPEND("")
+        END FOR
+
+        RETURN JOIN(lines, "\n")
+    END FUNCTION
+
+    //========================================
+    // PRIVATE: Convert to JSON Format
+    //========================================
+    FUNCTION convertToJSON(transcript: Transcript) -> String:
+
+        segments = EMPTY_LIST
+
+        FOR EACH segment IN transcript.segments ORDER BY sequenceNumber:
+            segmentData = {
+                "id": segment.id,
+                "startTime": Timecode(segment.startTime, JSON).toJSON(),
+                "endTime": Timecode(segment.endTime, JSON).toJSON(),
+                "text": segment.text,
+                "confidence": segment.confidence
+            }
+
+            IF this.options.includeSpeakers AND segment.speakerId IS NOT NULL THEN
+                segmentData["speakerId"] = segment.speakerId
+            END IF
+
+            segments.APPEND(segmentData)
+        END FOR
+
+        metadata = NULL
+        IF this.options.includeMetadata THEN
+            metadata = {
+                "transcriptId": transcript.id,
+                "language": transcript.language.code,
+                "duration": transcript.duration,
+                "wordCount": transcript.wordCount,
+                "createdAt": transcript.createdAt
+            }
+        END IF
+
+        result = {
+            "segments": segments,
+            "metadata": metadata
+        }
+
+        RETURN TO_JSON(result)
+    END FUNCTION
+
+    //========================================
+    // PRIVATE: Convert to TXT Format
+    //========================================
+    FUNCTION convertToTXT(transcript: Transcript) -> String:
+
+        lines = EMPTY_LIST
+
+        FOR EACH segment IN transcript.segments ORDER BY sequenceNumber:
+            text = segment.text
+
+            IF this.options.includeSpeakers AND segment.speakerId IS NOT NULL THEN
+                text = FORMAT("{}: {}", segment.speakerId, text)
+            END IF
+
+            lines.APPEND(text)
+        END FOR
+
+        RETURN JOIN(lines, "\n\n")
+    END FUNCTION
+
+    //========================================
+    // PRIVATE: Convert to DOCX Format
+    //========================================
+    FUNCTION convertToDOCX(transcript: Transcript) -> String:
+
+        // Use python-docx library
+        document = CREATE_DOCUMENT()
+
+        IF this.options.includeMetadata THEN
+            title = PARAGRAPH("Transcript: " + transcript.id)
+            document.ADD_PARAGRAPH(title)
+
+            metadata = FORMAT(
+                "Language: {} | Duration: {} | Words: {}",
+                transcript.language.code,
+                FORMAT_DURATION(transcript.duration),
+                transcript.wordCount
+            )
+            document.ADD_PARAGRAPH(metadata)
+            document.ADD_PARAGRAPH("")
+        END IF
+
+        FOR EACH segment IN transcript.segments ORDER BY sequenceNumber:
+            text = segment.text
+
+            IF this.options.includeTimestamps THEN
+                timestamp = FORMAT("[{} - {}] ",
+                    FORMAT_TIME(segment.startTime),
+                    FORMAT_TIME(segment.endTime)
+                )
+                text = timestamp + text
+            END IF
+
+            IF this.options.includeSpeakers AND segment.speakerId IS NOT NULL THEN
+                text = FORMAT("{}: {}", segment.speakerId, text)
+            END IF
+
+            paragraph = PARAGRAPH(text)
+            document.ADD_PARAGRAPH(paragraph)
+        END FOR
+
+        RETURN document.SAVE_TO_BYTES()
+    END FUNCTION
+
+END AGGREGATE
+
+//========================================
+// DOMAIN SERVICE: ExportConverterService
+//========================================
+DOMAIN SERVICE ExportConverterService
+
+    FUNCTION export(
+        transcript: Transcript,
+        format: ExportFormat,
+        options: ExportOptions
+    ) -> ExportResult:
+
+        // Create export job
+        job = ExportJob.create(transcript.id, format, options)
+
+        // Process export
+        fileUrl = job.process(transcript)
+
+        RETURN ExportResult(
+            exportJobId: job.id,
+            fileUrl: fileUrl,
+            format: format,
+            completedAt: job.completedAt
+        )
+    END FUNCTION
+
+    FUNCTION batchExport(
+        transcripts: List<Transcript>,
+        format: ExportFormat,
+        options: ExportOptions
+    ) -> List<ExportResult>:
+
+        results = EMPTY_LIST
+
+        FOR EACH transcript IN transcripts:
+            TRY:
+                result = this.export(transcript, format, options)
+                results.APPEND(result)
+            CATCH Error AS e:
+                LOG("Export failed for transcript " + transcript.id + ": " + e.message)
+                // Continue with other transcripts
+            END TRY
+        END FOR
+
+        RETURN results
+    END FUNCTION
+
+END DOMAIN SERVICE

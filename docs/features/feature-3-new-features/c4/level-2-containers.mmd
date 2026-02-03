@@ -1,0 +1,33 @@
+C4Container
+    title Container Diagram: STT Application - Feature 3 New Features
+
+    Person(user, "User")
+
+    System_Boundary(app, "STT Application") {
+        Container(web_ui, "Web UI", "React + TypeScript", "User interface for upload, edit, search, export")
+        Container(api_server, "API Server", "FastAPI + Python", "REST API, business logic, orchestration")
+        Container(worker, "Background Worker", "Python + RQ", "Async job processing for batch and export")
+        ContainerDb(postgres, "Database", "PostgreSQL 15", "Transcripts, versions, jobs metadata")
+        ContainerQueue(redis, "Queue & Cache", "Redis", "Job queue, caching, pub/sub")
+    }
+
+    System_Boundary(external, "External Services") {
+        ContainerDb(qdrant, "Vector DB", "Qdrant", "Semantic search index")
+        System_Ext(whisper, "Whisper API", "Cloud.ru", "Transcription & language detection")
+    }
+
+    System_Ext(email, "Email Service", "SMTP/HTTP", "Notifications")
+
+    Rel(user, web_ui, "Uses", "HTTPS")
+    Rel(web_ui, api_server, "API calls", "REST/JSON, HTTPS")
+    Rel(web_ui, worker, "Job status updates", "WebSocket")
+    Rel(api_server, postgres, "CRUD operations", "SQL, TCP")
+    Rel(api_server, redis, "Cache, queue", "Redis Protocol")
+    Rel(api_server, qdrant, "Vector search", "HTTP/gRPC")
+    Rel(api_server, whisper, "Transcribe, detect language", "REST API, HTTPS")
+    Rel(worker, redis, "Dequeue jobs", "Redis Protocol")
+    Rel(worker, postgres, "Update job status", "SQL, TCP")
+    Rel(worker, qdrant, "Index transcripts", "HTTP/gRPC")
+    Rel(worker, email, "Send notifications", "SMTP/API")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="2")

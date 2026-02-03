@@ -1,0 +1,25 @@
+C4Context
+    title System Context Diagram: STT Application - Feature 3 New Features
+
+    Person(content_creator, "Content Creator", "Podcasters, YouTubers creating captions and show notes")
+    Person(business_user, "Business Professional", "Meeting organizers, interviewers needing searchable archives")
+    Person(researcher, "Researcher", "Academic researchers analyzing interviews and focus groups")
+    Person(developer, "Developer", "Integrating transcription capabilities via API")
+
+    System(stt_app, "STT Application", "Speech-to-Text platform with advanced features")
+    System_Ext(cloudru, "Cloud.ru Whisper API", "Audio transcription and language detection")
+    System_Ext(qdrant, "Qdrant Vector Database", "Semantic search and vector storage")
+    System_Ext(diarization_api, "Diarization API (v1.1)", "Speaker identification service - Future")
+    System_Ext(email_service, "Email Service", "Notification delivery")
+
+    Rel(content_creator, stt_app, "Uploads audio, exports transcripts", "HTTPS")
+    Rel(business_user, stt_app, "Searches transcripts, manages versions", "HTTPS")
+    Rel(researcher, stt_app, "Batch processes, analyzes results", "HTTPS")
+    Rel(developer, stt_app, "Integrates via REST API", "HTTPS")
+
+    Rel(stt_app, cloudru, "Transcribes audio, detects language", "REST API")
+    Rel(stt_app, qdrant, "Indexes and searches transcripts", "gRPC/HTTP")
+    Rel(stt_app, diarization_api, "Identifies speakers (v1.1)", "REST API")
+    Rel(stt_app, email_service, "Sends completion notifications", "SMTP/API")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
