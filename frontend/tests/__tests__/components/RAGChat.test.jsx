@@ -6,24 +6,17 @@ import RAGChatPage from '../../../src/pages/RAGChatPage'
 import * as client from '../../../src/api/client'
 import clientInstance from '../../../src/api/client'
 
-// Mock the API client
+// Mock the API client - create mocks for all needed functions
 vi.mock('../../../src/api/client', () => ({
   getTranscripts: vi.fn(),
   getRAGSessions: vi.fn(),
   createRAGSession: vi.fn(),
-  deleteRAGSession: vi.fn()
-}))
-
-vi.mock('../../../src/api/client', async () => {
-  const actual = await vi.importActual('../../../src/api/client')
-  return {
-    default: {
-      get: vi.fn(),
-      post: vi.fn()
-    },
-    ...actual
+  deleteRAGSession: vi.fn(),
+  default: {
+    get: vi.fn(),
+    post: vi.fn()
   }
-})
+}))
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async () => {
@@ -94,6 +87,8 @@ const mockMessages = [
 
 describe('RAGChatPage', () => {
   beforeEach(() => {
+    // Mock scrollIntoView for jsdom
+    Element.prototype.scrollIntoView = vi.fn()
     vi.clearAllMocks()
     vi.useFakeTimers()
     client.getTranscripts.mockResolvedValue({ transcripts: mockTranscripts })
@@ -115,7 +110,7 @@ describe('RAGChatPage', () => {
   })
 
   const renderComponent = (route = '/rag') => {
-    return render(
+    const utils = render(
       <MemoryRouter initialEntries={[route]}>
         <Routes>
           <Route path="/rag" element={<RAGChatPage />} />
@@ -123,6 +118,7 @@ describe('RAGChatPage', () => {
         </Routes>
       </MemoryRouter>
     )
+    return { ...utils, container: utils.container }
   }
 
   describe('Rendering', () => {
@@ -160,7 +156,7 @@ describe('RAGChatPage', () => {
     it('should display send button', () => {
       renderComponent()
 
-      const sendButton = screen.container.querySelector('button[disabled]')
+      const sendButton = document.body.querySelector('button[disabled]')
       expect(sendButton).toBeInTheDocument()
     })
   })
@@ -170,7 +166,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'What was discussed?')
       fireEvent.click(sendButton)
@@ -185,7 +181,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -200,7 +196,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -227,7 +223,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -257,7 +253,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -275,7 +271,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -315,7 +311,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -331,13 +327,13 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
 
       await waitFor(() => {
-        const disabledButton = screen.container.querySelector('button[disabled]')
+        const disabledButton = document.body.querySelector('button[disabled]')
         expect(disabledButton).toBeInTheDocument()
       })
     })
@@ -345,7 +341,7 @@ describe('RAGChatPage', () => {
     it('should not send empty messages', async () => {
       renderComponent()
 
-      const sendButton = screen.container.querySelector('button[disabled]')
+      const sendButton = document.body.querySelector('button[disabled]')
       fireEvent.click(sendButton)
 
       expect(clientInstance.post).not.toHaveBeenCalled()
@@ -357,7 +353,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       await waitFor(() => {
-        const checkboxes = screen.container.querySelectorAll('input[type="checkbox"]')
+        const checkboxes = document.body.querySelectorAll('input[type="checkbox"]')
         expect(checkboxes.length).toBeGreaterThan(0)
       })
     })
@@ -366,12 +362,12 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       await waitFor(() => {
-        const checkbox = screen.container.querySelector('input[type="checkbox"]')
+        const checkbox = document.body.querySelector('input[type="checkbox"]')
         fireEvent.click(checkbox)
       })
 
       await waitFor(() => {
-        const checkedCheckbox = screen.container.querySelector('input[type="checkbox"]:checked')
+        const checkedCheckbox = document.body.querySelector('input[type="checkbox"]:checked')
         expect(checkedCheckbox).toBeInTheDocument()
       })
     })
@@ -494,7 +490,7 @@ describe('RAGChatPage', () => {
       fireEvent.click(selectButton)
 
       await waitFor(() => {
-        const deleteButton = screen.container.querySelector('.btn-delete-session')
+        const deleteButton = document.body.querySelector('.btn-delete-session')
         fireEvent.click(deleteButton)
       })
 
@@ -644,7 +640,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -667,7 +663,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -694,7 +690,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -716,7 +712,7 @@ describe('RAGChatPage', () => {
       renderComponent()
 
       const input = screen.getByPlaceholderText('Задайте вопрос...')
-      const sendButton = screen.container.querySelector('button:not([disabled])')
+      const sendButton = document.body.querySelector('button:not([disabled])')
 
       await userEvent.type(input, 'Test question')
       fireEvent.click(sendButton)
@@ -769,7 +765,7 @@ describe('RAGChatPage', () => {
     it('should display messages in scrollable container', async () => {
       renderComponent()
 
-      const messagesContainer = screen.container.querySelector('.messages-container')
+      const messagesContainer = document.body.querySelector('.messages-container')
       expect(messagesContainer).toBeInTheDocument()
     })
   })
