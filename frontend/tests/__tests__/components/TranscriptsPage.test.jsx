@@ -55,6 +55,8 @@ const mockTranscripts = [
 
 describe('TranscriptsPage', () => {
   beforeEach(() => {
+    // Mock scrollIntoView for jsdom
+    Element.prototype.scrollIntoView = vi.fn()
     vi.clearAllMocks()
     vi.useFakeTimers()
   })
