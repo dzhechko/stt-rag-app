@@ -40,5 +40,8 @@
   },
   "workspaces": [
     "frontend"
-  ]
+  ],
+  "dependencies": {
+    "@ruvector/core": "^0.1.30"
+  }
 }

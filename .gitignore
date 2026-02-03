@@ -103,3 +103,7 @@ dpzhechkov/
 agentdb.db
 vectors.db
 *.db
+
+# RuVector intelligence data
+.ruvector/
+.claude/statusline.sh
