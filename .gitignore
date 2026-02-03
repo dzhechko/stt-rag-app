@@ -101,3 +101,5 @@ Thumbs.db
 .claude-flow/
 dpzhechkov/
 agentdb.db
+vectors.db
+*.db
